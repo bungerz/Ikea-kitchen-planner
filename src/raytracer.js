@@ -3,66 +3,56 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import {
   WebGLPathTracer,
   ProceduralEquirectTexture,
-  ShapedAreaLight,
-  DenoiseMaterial
+  ShapedAreaLight
 } from 'three-gpu-pathtracer';
 
 /**
- * Hardware-tuned GPU Path Tracing profiles:
- * - mobile   : Galaxy Z Fold 8 Ultra / flagship Android & iOS (fast tiles, lean VRAM, watchdog-safe)
- * - balanced : Unfolded Z Fold / Tablets / Laptops
- * - ultra    : Desktop NVIDIA RTX 3070 & discrete GPUs (1x1 full-frame, 8 bounces, 256 spp)
+ * Hardware-tuned WebGL2 GPU Path Tracing profiles:
+ * Tuned for NVIDIA RTX 3070 (fast 12–20 spp/sec, silky orbiting via dynamicLowRes) & mobile GPUs.
  */
 export const RT_PROFILES = {
   mobile: {
     key: 'mobile',
-    label: 'Fold / Fast',
-    renderScale: 0.72,
-    tiles: [3, 3],
-    bounces: 4,
+    label: 'Fast',
+    renderScale: 0.65,
+    tiles: [2, 2],
+    bounces: 3,
     targetSamples: 64,
     textureSize: 512,
-    filterGlossyFactor: 0.60,
-    maxDpr: 1.5
+    filterGlossyFactor: 0.65,
+    maxDpr: 1.25
   },
   balanced: {
     key: 'balanced',
     label: 'Balanced',
-    renderScale: 0.90,
-    tiles: [2, 2],
-    bounces: 5,
+    renderScale: 0.78,
+    tiles: [2, 1],
+    bounces: 4,
     targetSamples: 128,
-    textureSize: 1024,
-    filterGlossyFactor: 0.50,
-    maxDpr: 1.75
+    textureSize: 512,
+    filterGlossyFactor: 0.55,
+    maxDpr: 1.35
   },
   ultra: {
     key: 'ultra',
     label: 'RTX Ultra',
-    renderScale: 1.0,
+    renderScale: 0.88,
     tiles: [1, 1],
-    bounces: 8,
-    targetSamples: 256,
+    bounces: 4,
+    targetSamples: 160,
     textureSize: 1024,
-    filterGlossyFactor: 0.35,
-    maxDpr: 2.0
+    filterGlossyFactor: 0.45,
+    maxDpr: 1.5
   }
 };
 
-/**
- * Auto-detect GPU tier so Galaxy Z Fold defaults to Fold/Fast and RTX 3070 defaults to RTX Ultra.
- */
 export function detectGpuProfile(renderer) {
   const gl = renderer.getContext();
   let raw = '';
   try {
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
-    if (ext) {
-      raw = String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '');
-    }
-  } catch (_) {
-    // Ignore restricted environments
-  }
+    if (ext) raw = String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '');
+  } catch (_) {}
 
   const isMobileUa = /Android|iPhone|iPad|iPod|Mobile|SM-F/i.test(navigator.userAgent);
   const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
@@ -98,60 +88,151 @@ export function detectGpuProfile(renderer) {
 }
 
 /**
- * Generates physically-based HDR equirectangular sky & architectural window environments
- * tailored to each IKEA studio lighting preset (morning, daylight D65, cozy evening).
+ * Guided Perceptual Edge-Preserving Bilateral Denoiser (NaN-proof & Firefly-resistant!).
+ * Computes a local 3x3 guide mean before bilateral edge weighting so isolated Monte Carlo
+ * salt-and-pepper pixels on flat walls/sofas smooth out cleanly while real wood/wall edges stay crisp!
  */
-function buildProceduralHdrEnv(mode) {
+function createSafeBilateralDenoiseMaterial() {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    blending: THREE.NoBlending,
+    uniforms: {
+      map: { value: null },
+      opacity: { value: 1.0 },
+      sigma: { value: 3.2 },
+      threshold: { value: 0.28 },
+      radius: { value: 4.0 }
+    },
+    vertexShader: /* glsl */`
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */`
+      uniform sampler2D map;
+      uniform float opacity;
+      uniform float sigma;
+      uniform float threshold;
+      uniform float radius;
+      varying vec2 vUv;
+
+      vec3 safeSample(vec2 uv) {
+        vec3 c = texture2D(map, uv).rgb;
+        if (any(isnan(c)) || any(isinf(c))) return vec3(0.0);
+        return clamp(c, vec3(0.0), vec3(6.0));
+      }
+
+      vec3 toPerceptual(vec3 c) {
+        return sqrt(c / (vec3(1.0) + c));
+      }
+
+      void main() {
+        vec2 texSize = vec2(textureSize(map, 0));
+        vec2 invSize = 1.0 / max(texSize, vec2(1.0));
+
+        // Step 1: Build a noise-free 3x3 local guide color so isolated salt-and-pepper
+        // pixels are NEVER mistaken for real geometric edges!
+        vec3 guideSum = vec3(0.0);
+        for (int gx = -1; gx <= 1; gx++) {
+          for (int gy = -1; gy <= 1; gy++) {
+            guideSum += safeSample(vUv + vec2(float(gx), float(gy)) * invSize);
+          }
+        }
+        vec3 guideCol = guideSum / 9.0;
+        vec3 guideP = toPerceptual(guideCol);
+
+        // Step 2: Edge-preserving bilateral filter guided by guideP
+        float invSigma2 = 0.5 / max(sigma * sigma, 0.01);
+        float invThresh2 = 0.5 / max(threshold * threshold, 0.005);
+
+        vec3 accum = guideCol * 0.5;
+        float weightSum = 0.5;
+
+        int r = int(clamp(radius, 1.0, 5.0));
+        for (int dx = -5; dx <= 5; dx++) {
+          if (dx < -r || dx > r) continue;
+          for (int dy = -5; dy <= 5; dy++) {
+            if (dy < -r || dy > r) continue;
+            vec2 offset = vec2(float(dx), float(dy));
+            float dist2 = dot(offset, offset);
+            if (dist2 > radius * radius) continue;
+
+            vec3 sCol = safeSample(vUv + offset * invSize);
+            vec3 diff = toPerceptual(sCol) - guideP;
+            float wSpatial = exp(-dist2 * invSigma2);
+            float wColor = exp(-dot(diff, diff) * invThresh2);
+            float w = wSpatial * wColor;
+
+            accum += sCol * w;
+            weightSum += w;
+          }
+        }
+
+        gl_FragColor = vec4(accum / max(weightSum, 1e-5), 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+        gl_FragColor.a = opacity;
+      }
+    `
+  });
+}
+
+/**
+ * Generates a physically-based HDR equirectangular sky synchronized to Ambilly's live NOAA sun!
+ */
+function buildAmbillyHdrEnv(sunData, d65Override = false) {
   const tex = new ProceduralEquirectTexture(256, 128);
-  const sunDir = new THREE.Vector3(5.4, 3.85, 2.35).normalize();
-  const winDir = new THREE.Vector3(0.86, 0.22, 0.46).normalize();
+  const sunDir = (sunData?.dir || new THREE.Vector3(-0.5, 0.5, 0.7)).clone().normalize();
   const dir = new THREE.Vector3();
+
+  const zenith = sunData?.skyZenith || new THREE.Color('#4D88D1');
+  const horizon = sunData?.skyHorizon || new THREE.Color('#E0EBF5');
+  const sunCol = sunData?.sunColor || new THREE.Color('#FFF4DE');
+  const isNight = Boolean(sunData?.isNight) && !d65Override;
 
   tex.generationCallback = (polar, _uv, _coord, color) => {
     dir.setFromSpherical(polar);
     const up = Math.max(0, dir.y);
     const down = Math.max(0, -dir.y);
 
-    if (mode === 'morning') {
-      // Warm Southeast Scandinavian sunlight + clean bright architectural bounce
-      const skyR = 0.72 + 0.14 * (1 - up);
-      const skyG = 0.74 + 0.12 * (1 - up);
-      const skyB = 0.78 + 0.04 * (1 - up);
-      let r = skyR * (1 - down) + 0.34 * down;
-      let g = skyG * (1 - down) + 0.32 * down;
-      let b = skyB * (1 - down) + 0.29 * down;
-
-      // Soft East/South patio window light panel
-      const winDot = Math.max(0, dir.dot(winDir));
-      const winGlow = Math.pow(winDot, 4.0) * 1.15;
-      r += winGlow * 1.05;
-      g += winGlow * 0.98;
-      b += winGlow * 0.88;
-
-      // Warm HDR sun halo (creates soft architectural highlights on VOXTORP/KASKER/brass)
-      const sunDot = Math.max(0, dir.dot(sunDir));
-      const sunHalo = Math.pow(sunDot, 42.0) * 4.5 + Math.pow(sunDot, 280.0) * 18.0;
-      r += sunHalo * 1.12;
-      g += sunHalo * 0.99;
-      b += sunHalo * 0.84;
-
-      color.setRGB(r, g, b);
-    } else if (mode === 'daylight') {
-      // Pure D65 neutral architectural studio skylight for faithful NCS color accuracy
-      const base = 0.74 + 0.24 * up - 0.32 * down;
-      const winDot = Math.max(0, dir.dot(winDir));
-      const softbox = Math.pow(winDot, 5.0) * 1.25;
-      const topDot = Math.max(0, dir.y);
-      const skylight = Math.pow(topDot, 3.0) * 0.45;
-      const v = Math.max(0.22, base + softbox + skylight);
+    if (d65Override) {
+      const v = Math.max(0.32, 0.90 + 0.35 * up - 0.30 * down);
       color.setRGB(v, v, v);
-    } else {
-      // Cozy Evening: deep twilight blue-slate sky so warm kitchen LEDs & pendants dominate
-      const r = 0.032 + 0.020 * (1 - up) + 0.035 * down;
-      const g = 0.038 + 0.022 * (1 - up) + 0.030 * down;
-      const b = 0.068 + 0.032 * (1 - up) + 0.022 * down;
-      color.setRGB(r, g, b);
+      return;
     }
+
+    if (isNight) {
+      const r = 0.03 + 0.02 * (1 - up) + 0.02 * down;
+      const g = 0.04 + 0.025 * (1 - up) + 0.02 * down;
+      const b = 0.08 + 0.04 * (1 - up) + 0.02 * down;
+      color.setRGB(r, g, b);
+      return;
+    }
+
+    const k = Math.pow(up, 0.55);
+    let r = THREE.MathUtils.lerp(horizon.r, zenith.r, k) * 1.25;
+    let g = THREE.MathUtils.lerp(horizon.g, zenith.g, k) * 1.25;
+    let b = THREE.MathUtils.lerp(horizon.b, zenith.b, k) * 1.25;
+
+    if (down > 0) {
+      const gd = Math.min(1, down * 2.5);
+      r = THREE.MathUtils.lerp(r, 0.38, gd);
+      g = THREE.MathUtils.lerp(g, 0.36, gd);
+      b = THREE.MathUtils.lerp(b, 0.33, gd);
+    }
+
+    // Smooth solar glow (capped to avoid harsh fireflies on diffuse interior bounces!)
+    const sunDot = Math.max(0, dir.dot(sunDir));
+    const halo = Math.pow(sunDot, 16.0) * 1.8 + Math.pow(sunDot, 120.0) * 5.5;
+    r += sunCol.r * halo;
+    g += sunCol.g * halo;
+    b += sunCol.b * halo;
+
+    color.setRGB(r, g, b);
   };
 
   tex.update();
@@ -159,7 +240,7 @@ function buildProceduralHdrEnv(mode) {
 }
 
 /**
- * Self-contained On-Demand WebGL2 GPU Path Tracing Engine for the IKEA METOD Kitchen Studio.
+ * Full-Apartment On-Demand WebGL2 GPU Path Tracing Engine (RTX 3070 + Mobile Tuned).
  */
 export class KitchenRayTracer {
   constructor({ renderer, scene, camera, controls, lightRefs, constants }) {
@@ -184,13 +265,14 @@ export class KitchenRayTracer {
     this.profileKey = detected.profileKey;
     this.isSoftware = Boolean(detected.isSoftware);
     this.targetSamples = RT_PROFILES[this.profileKey].targetSamples;
-    this.currentLightingMode = 'morning';
+    this.currentSunData = null;
+    this.currentD65 = false;
 
-    // Saved raster scene state so exiting RT restores 100% original calibration
     this._savedRaster = null;
-    this._hdrEnvCache = new Map();
+    this._hiddenMeshes = [];
+    this._hdrEnvTex = null;
     this._rtLightsGroup = null;
-    this._rtWindowLight = null;
+    this._rtWindowLights = [];
     this._rtBackLedLight = null;
     this._rtLeftLedLight = null;
     this._rtPendantLights = [];
@@ -204,24 +286,17 @@ export class KitchenRayTracer {
 
     this._pathTracer = new WebGLPathTracer(this.renderer);
     this._pathTracer.multipleImportanceSampling = true;
-    this._pathTracer.transmissiveBounces = 4;
-    this._pathTracer.renderDelay = 90;
+    this._pathTracer.transmissiveBounces = 2;
+    this._pathTracer.renderDelay = 35;
     this._pathTracer.minSamples = 1;
-    this._pathTracer.fadeDuration = 180;
+    this._pathTracer.fadeDuration = 120;
     this._pathTracer.rasterizeScene = true;
-    this._pathTracer.dynamicLowRes = false;
+    this._pathTracer.dynamicLowRes = true;
+    this._pathTracer.lowResScale = 0.45;
     this._pathTracer.synchronizeRenderSize = true;
 
-    // Smart bilateral edge-preserving denoiser quad
-    const denoiseMat = new DenoiseMaterial({
-      sigma: 3.5,
-      kSigma: 1.4,
-      threshold: 0.055,
-      transparent: true
-    });
-    this._denoiseQuad = new FullScreenQuad(denoiseMat);
+    this._denoiseQuad = new FullScreenQuad(createSafeBilateralDenoiseMaterial());
 
-    // Custom blit callback: applies adaptive edge-preserving Smart Denoise when enabled
     this._pathTracer.renderToCanvasCallback = (target, renderer, quad) => {
       const currentAutoClear = renderer.autoClear;
       renderer.autoClear = false;
@@ -233,21 +308,24 @@ export class KitchenRayTracer {
         dMat.uniforms.opacity.value = quad.material.opacity;
         dMat.blending = quad.material.opacity < 1 ? THREE.NormalBlending : THREE.NoBlending;
 
-        // Smoothly tighten denoising radius as sample count converges so wood/marble texture stays crisp
-        if (samples < 14) {
-          dMat.uniforms.sigma.value = 4.2;
-          dMat.uniforms.kSigma.value = 1.45;
-          dMat.uniforms.threshold.value = 0.072;
-        } else if (samples < 48) {
+        // Smooth adaptive guided denoising: clean magazine-grade GI even at 15–50 samples!
+        if (samples < 20) {
+          dMat.uniforms.radius.value = 5.0;
+          dMat.uniforms.sigma.value = 4.0;
+          dMat.uniforms.threshold.value = 0.36;
+        } else if (samples < 60) {
+          dMat.uniforms.radius.value = 4.0;
           dMat.uniforms.sigma.value = 3.0;
-          dMat.uniforms.kSigma.value = 1.30;
-          dMat.uniforms.threshold.value = 0.044;
+          dMat.uniforms.threshold.value = 0.28;
+        } else if (samples < 120) {
+          dMat.uniforms.radius.value = 3.0;
+          dMat.uniforms.sigma.value = 2.2;
+          dMat.uniforms.threshold.value = 0.22;
         } else {
-          dMat.uniforms.sigma.value = 2.0;
-          dMat.uniforms.kSigma.value = 1.15;
-          dMat.uniforms.threshold.value = 0.024;
+          dMat.uniforms.radius.value = 2.0;
+          dMat.uniforms.sigma.value = 1.6;
+          dMat.uniforms.threshold.value = 0.16;
         }
-
         this._denoiseQuad.render(renderer);
       } else {
         quad.render(renderer);
@@ -265,38 +343,56 @@ export class KitchenRayTracer {
     const grp = new THREE.Group();
     grp.name = 'RTPhysicalLights';
 
-    // 1. Soft Architectural Loggia/West Window Area Light shining into Séjour & Kitchen
-    const winLight = new ShapedAreaLight(new THREE.Color('#FFF8EE'), 3.8, 3.6, 2.0);
-    winLight.isCircular = false;
-    winLight.position.set(2.8, 1.45, 8.75);
-    winLight.lookAt(3.4, 0.90, 4.8);
-    grp.add(winLight);
-    this._rtWindowLight = winLight;
+    // Exact UN-OCCLUDED Window Portal Area Lights positioned cleanly INSIDE each opening!
+    // Remember: RectAreaLight emits strictly along local -Z!
+    //   rotY = 0         -> emits North (-Z)
+    //   rotY = -Math.PI/2 -> emits East (+X)
+    const addPortal = (roomGroup, x, y, z, w, h, rotY, intensity = 3.8) => {
+      const l = new ShapedAreaLight(new THREE.Color('#FFF9F0'), intensity, w, h);
+      l.isCircular = false;
+      l.position.set(x, y, z);
+      l.rotation.y = rotY;
+      l.userData.roomGroup = roomGroup;
+      grp.add(l);
+      this._rtWindowLights.push(l);
+      return l;
+    };
 
-    // 2. Physical Kitchen Under-Cabinet Linear LED Strips (North Sink Run + East Cooktop Run)
-    const backLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 4.0, 1.75, 0.05);
+    this._rtWindowLights = [];
+    // 1. Séjour & Kitchen Portals (active when viewing Séjour/Kitchen!)
+    addPortal('sejour', 3.45, 1.15, 8.48, 2.75, 1.85, 0, 4.2);
+    addPortal('sejour', 0.34, 1.30, 6.90, 1.25, 1.55, -Math.PI / 2, 3.6);
+    addPortal('sejour', 0.34, 1.30, 4.55, 1.25, 1.55, -Math.PI / 2, 3.6);
+    // 2. Bedroom Portals (only enabled when camera is inside/near that bedroom so Séjour MIS stays 3x cleaner!)
+    addPortal('ch3', 0.34, 1.30, 1.62, 1.25, 1.55, -Math.PI / 2, 3.8);
+    addPortal('ch2', 6.90, 1.30, 10.90, 1.25, 1.55, 0, 3.8);
+    addPortal('ch1', 9.71, 1.30, 10.90, 1.25, 1.55, 0, 3.8);
+
+    // Kitchen under-cabinet LEDs (enabled primarily in evening/night so daytime MIS stays clean!)
+    const backLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 10.0, 1.70, 0.08);
     backLed.isCircular = false;
-    backLed.position.set(3.47, 1.46, 3.30);
+    backLed.position.set(3.47, 1.44, 3.36);
     backLed.rotation.x = -Math.PI / 2;
     grp.add(backLed);
     this._rtBackLedLight = backLed;
 
-    const leftLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 4.0, 0.05, 1.24);
+    const leftLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 10.0, 0.08, 1.20);
     leftLed.isCircular = false;
-    leftLed.position.set(5.32, 1.46, 4.62);
+    leftLed.position.set(5.26, 1.44, 4.62);
     leftLed.rotation.x = -Math.PI / 2;
     grp.add(leftLed);
     this._rtLeftLedLight = leftLed;
 
-    // 3. Apartment Practical Ceiling Light Discs (Séjour Dining, Lounge, Ch3, Ch1, Ch2)
+    // Practical ceiling bounce discs BELOW pendant shades (never trapped inside shade geometry!)
+    this._rtPendantLights = [];
     [
-      [1.55, 1.60, 6.40],
-      [3.85, 1.95, 7.05],
-      [2.62, 1.95, 1.64],
-      [9.71, 1.95, 8.85],
-      [6.90, 1.95, 8.85]
+      [1.55, 1.52, 6.40],
+      [3.85, 1.82, 7.05],
+      [2.62, 1.82, 1.64],
+      [9.71, 1.82, 8.85],
+      [6.90, 1.82, 8.85]
     ].forEach(([px, py, pz]) => {
-      const pDisc = new ShapedAreaLight(new THREE.Color('#FFCC85'), 8.0, 0.22, 0.22);
+      const pDisc = new ShapedAreaLight(new THREE.Color('#FFD08A'), 18.0, 0.34, 0.34);
       pDisc.isCircular = true;
       pDisc.position.set(px, py, pz);
       pDisc.rotation.x = -Math.PI / 2;
@@ -307,70 +403,106 @@ export class KitchenRayTracer {
     this._rtLightsGroup = grp;
   }
 
-  _getHdrEnv(mode) {
-    if (!this._hdrEnvCache.has(mode)) {
-      this._hdrEnvCache.set(mode, buildProceduralHdrEnv(mode));
-    }
-    return this._hdrEnvCache.get(mode);
+  _detectCameraZone() {
+    const p = this.camera.position;
+    if (p.y > 4.5) return 'cutaway'; // Overview cutaway: sky dome lights every room directly!
+    if (p.z < 3.10 && p.x < 5.80) return 'ch3';
+    if (p.z > 6.72 && p.x >= 5.50 && p.x < 8.28) return 'ch2';
+    if (p.z > 6.72 && p.x >= 8.28) return 'ch1';
+    return 'sejour';
   }
 
-  _configureSceneLightingForRT(mode) {
-    this.currentLightingMode = mode;
+  _configureSceneLightingForRT(sunData, d65Override = false) {
+    this.currentSunData = sunData;
+    this.currentD65 = Boolean(d65Override);
+    const zone = this._detectCameraZone();
+    this._lastZone = zone;
     const { sunLight, fillLight, rimLight, underCabLights, pendantLights } = this.lightRefs;
 
-    // Hide raster-only fill hacks & point light approximations so path tracer MIS
-    // never wastes samples on 0-intensity lights (2.5x cleaner & faster convergence!)
-    fillLight.visible = false;
-    rimLight.visible = false;
-    underCabLights.forEach(l => { l.visible = false; });
-    pendantLights.forEach(l => { l.visible = false; });
+    if (fillLight) fillLight.visible = false;
+    if (rimLight) rimLight.visible = false;
+    (underCabLights || []).forEach(l => { l.visible = false; });
+    (pendantLights || []).forEach(l => { l.visible = false; });
 
-    this.scene.environment = this._getHdrEnv(mode);
+    if (this._hdrEnvTex) this._hdrEnvTex.dispose();
+    this._hdrEnvTex = buildAmbillyHdrEnv(sunData, d65Override);
+    this.scene.environment = this._hdrEnvTex;
+    this.scene.background = this._hdrEnvTex;
 
-    if (mode === 'morning') {
-      this.scene.environmentIntensity = 0.78;
-      this.renderer.toneMappingExposure = 0.94;
-      sunLight.visible = true;
-      sunLight.color.set('#FFF2E0');
-      sunLight.intensity = 2.65;
-      sunLight.position.set(5.4, 3.85, 2.35);
+    const isNight = Boolean(sunData?.isNight) && !d65Override;
+    const isEvening = Boolean(sunData?.lightsRecommendedOn) && !d65Override;
 
-      this._rtWindowLight.visible = true;
-      this._rtWindowLight.color.set('#FFF8EE');
-      this._rtWindowLight.intensity = 2.4;
-      this._rtBackLedLight.visible = true;
-      this._rtBackLedLight.intensity = 3.2;
-      this._rtLeftLedLight.visible = true;
-      this._rtLeftLedLight.intensity = 3.2;
-      this._rtPendantLights.forEach(l => { l.visible = true; l.intensity = 1.6; });
-    } else if (mode === 'daylight') {
-      // Pure D65 neutral architectural daylight for NCS color fidelity
-      this.scene.environmentIntensity = 0.95;
-      this.renderer.toneMappingExposure = 0.94;
+    const enableZonePortals = (color, intensity) => {
+      this._rtWindowLights.forEach(l => {
+        // In cutaway mode, HDR sky directly lights every open room -> zero portals needed!
+        // Inside a room, ONLY enable that room's portals so MIS never wastes rays on occluded walls!
+        const active = zone !== 'cutaway' && l.userData.roomGroup === zone;
+        l.visible = active;
+        l.color.copy(color);
+        l.intensity = intensity;
+      });
+    };
+
+    if (d65Override) {
+      this.scene.environmentIntensity = 1.1;
+      this.renderer.toneMappingExposure = 0.96;
       sunLight.visible = true;
       sunLight.color.set('#FFFFFF');
-      sunLight.intensity = 1.15;
-      sunLight.position.set(3.2, 5.8, 3.4);
-
-      this._rtWindowLight.visible = true;
-      this._rtWindowLight.color.set('#FFFFFF');
-      this._rtWindowLight.intensity = 2.9;
+      sunLight.intensity = 1.5;
+      sunLight.position.set(7.6, 18.0, 13.6);
+      enableZonePortals(new THREE.Color('#FFFFFF'), 4.2);
       this._rtBackLedLight.visible = false;
       this._rtLeftLedLight.visible = false;
       this._rtPendantLights.forEach(l => { l.visible = false; });
-    } else {
-      // Cozy Evening: moody twilight exterior + dramatic warm interior LED & pendant pools
-      this.scene.environmentIntensity = 0.45;
-      this.renderer.toneMappingExposure = 0.98;
+    } else if (isNight) {
+      this.scene.environmentIntensity = 0.25;
+      this.renderer.toneMappingExposure = 1.04;
       sunLight.visible = false;
-      this._rtWindowLight.visible = false;
-
+      this._rtWindowLights.forEach(l => { l.visible = false; });
       this._rtBackLedLight.visible = true;
-      this._rtBackLedLight.intensity = 28.0;
+      this._rtBackLedLight.intensity = 14.0;
       this._rtLeftLedLight.visible = true;
-      this._rtLeftLedLight.intensity = 28.0;
-      this._rtPendantLights.forEach(l => { l.visible = true; l.intensity = 36.0; });
+      this._rtLeftLedLight.intensity = 14.0;
+      this._rtPendantLights.forEach(l => { l.visible = true; l.intensity = 22.0; });
+    } else {
+      this.scene.environmentIntensity = isEvening ? 0.75 : 1.05;
+      this.renderer.toneMappingExposure = 0.98;
+      sunLight.visible = true;
+      if (sunData) {
+        sunLight.color.copy(sunData.sunColor);
+        sunLight.intensity = Math.max(1.4, sunData.sunIntensity * 1.5);
+        sunLight.position.set(
+          5.6 + sunData.dir.x * 24,
+          Math.max(2.6, sunData.dir.y * 24),
+          5.6 + sunData.dir.z * 24
+        );
+      }
+      const portalCol = sunData ? sunData.skyHorizon.clone().lerp(new THREE.Color('#FFF8EE'), 0.45) : new THREE.Color('#FFF8EE');
+      enableZonePortals(portalCol, isEvening ? 3.0 : 4.6);
+      this._rtBackLedLight.visible = isEvening;
+      this._rtBackLedLight.intensity = 10.0;
+      this._rtLeftLedLight.visible = isEvening;
+      this._rtLeftLedLight.intensity = 10.0;
+      this._rtPendantLights.forEach(l => {
+        l.visible = isEvening;
+        l.intensity = 16.0;
+      });
     }
+  }
+
+  _hideRtIncompatibleMeshes() {
+    this._hiddenMeshes = [];
+    this.scene.traverse(obj => {
+      if (obj.visible && obj.userData && (obj.userData.hideInRT || obj.userData.isWindowGlass)) {
+        obj.visible = false;
+        this._hiddenMeshes.push(obj);
+      }
+    });
+  }
+
+  _restoreHiddenMeshes() {
+    for (const obj of this._hiddenMeshes) obj.visible = true;
+    this._hiddenMeshes = [];
   }
 
   _applyProfileSettings(profileKey, resetAccumulation = true) {
@@ -397,35 +529,40 @@ export class KitchenRayTracer {
     return (RT_PROFILES[this.profileKey] || RT_PROFILES.balanced).maxDpr;
   }
 
-  async enable(lightingMode, onStatus) {
+  async enable({ sunData, d65Override = false } = {}, onStatus) {
     this._ensureInitialized();
     if (this.active) return;
 
     if (onStatus) onStatus('compiling');
 
-    // Snapshot raster state for lossless restoration upon exit
-    const { sunLight, fillLight, rimLight, underCabLights, pendantLights } = this.lightRefs;
+    const { sunLight } = this.lightRefs;
     this._savedRaster = {
+      background: this.scene.background,
       environment: this.scene.environment,
       environmentIntensity: this.scene.environmentIntensity ?? 1.0,
       exposure: this.renderer.toneMappingExposure,
+      pixelRatio: this.renderer.getPixelRatio(),
       sunColor: sunLight.color.clone(),
       sunIntensity: sunLight.intensity,
       sunPos: sunLight.position.clone()
     };
 
+    const safeDpr = Math.min(window.devicePixelRatio || 1, this.getMaxDpr());
+    this.renderer.setPixelRatio(safeDpr);
+
+    this._hideRtIncompatibleMeshes();
+
     if (!this._rtLightsGroup.parent) {
       this.scene.add(this._rtLightsGroup);
     }
 
-    this._configureSceneLightingForRT(lightingMode);
+    this._configureSceneLightingForRT(sunData, d65Override);
 
     this.active = true;
     this.paused = false;
     this._pathTracer.enablePathTracing = true;
     this._pathTracer.pausePathTracing = false;
 
-    // Yield one frame so the compiling pill renders before synchronous BVH + GLSL compile
     await new Promise(resolve => requestAnimationFrame(resolve));
 
     this._pathTracer.setScene(this.scene, this.camera);
@@ -442,27 +579,24 @@ export class KitchenRayTracer {
     this.active = false;
     this.paused = false;
 
-    if (this._pathTracer) {
-      this._pathTracer.enablePathTracing = false;
-    }
+    if (this._pathTracer) this._pathTracer.enablePathTracing = false;
+    if (this._rtLightsGroup && this._rtLightsGroup.parent) this.scene.remove(this._rtLightsGroup);
+    this._restoreHiddenMeshes();
 
-    if (this._rtLightsGroup && this._rtLightsGroup.parent) {
-      this.scene.remove(this._rtLightsGroup);
-    }
-
-    // Restore original calibrated raster environment & lights
     const { sunLight, fillLight, rimLight, underCabLights, pendantLights } = this.lightRefs;
-    sunLight.visible = true;
-    fillLight.visible = true;
-    rimLight.visible = true;
-    underCabLights.forEach(l => { l.visible = true; });
-    pendantLights.forEach(l => { l.visible = true; });
+    if (sunLight) sunLight.visible = true;
+    if (fillLight) fillLight.visible = true;
+    if (rimLight) rimLight.visible = true;
+    (underCabLights || []).forEach(l => { l.visible = true; });
+    (pendantLights || []).forEach(l => { l.visible = true; });
 
     if (this._savedRaster) {
       const s = this._savedRaster;
+      this.scene.background = s.background;
       this.scene.environment = s.environment;
       this.scene.environmentIntensity = s.environmentIntensity;
       this.renderer.toneMappingExposure = s.exposure;
+      this.renderer.setPixelRatio(s.pixelRatio);
       sunLight.color.copy(s.sunColor);
       sunLight.intensity = s.sunIntensity;
       sunLight.position.copy(s.sunPos);
@@ -472,95 +606,84 @@ export class KitchenRayTracer {
 
   setProfile(profileKey) {
     this._applyProfileSettings(profileKey, true);
+    if (this.active) {
+      const safeDpr = Math.min(window.devicePixelRatio || 1, this.getMaxDpr());
+      this.renderer.setPixelRatio(safeDpr);
+      this._pathTracer.updateCamera();
+    }
   }
 
   setDenoise(enabled) {
     this.denoiseEnabled = Boolean(enabled);
-    // Re-blit immediately if paused/converged so toggle feedback is instant
     if (this.active && this._pathTracer && this.paused) {
       this._pathTracer.renderSample();
     }
   }
 
-  togglePause() {
-    if (!this.active || !this._pathTracer) return false;
-    if (this.paused && this.samples >= this.targetSamples) {
-      this.targetSamples += 64;
-    }
-    this.paused = !this.paused;
-    this._pathTracer.pausePathTracing = this.paused;
-    return this.paused;
-  }
-
-  addMoreSamples(delta = 64) {
-    if (!this.active || !this._pathTracer) return;
-    this.targetSamples = Math.max(this.targetSamples, Math.floor(this.samples)) + delta;
+  syncAmbillySun(sunData, d65Override = false) {
+    if (!this.active) return;
+    this._configureSceneLightingForRT(sunData, d65Override);
+    this.needsEnvUpdate = true;
+    this.needsLightsUpdate = true;
     this.paused = false;
-    this._pathTracer.pausePathTracing = false;
+    if (this._pathTracer) this._pathTracer.pausePathTracing = false;
   }
 
-  onCameraMoved() {
+  notifyCameraChanged() {
     if (!this.active || !this._pathTracer) return;
-    // If previously auto-paused after convergence, automatically resume tracing the new angle
     if (this.paused && this.samples >= this.targetSamples) {
       this.paused = false;
       this._pathTracer.pausePathTracing = false;
     }
+    const newZone = this._detectCameraZone();
+    if (newZone !== this._lastZone) {
+      this._lastZone = newZone;
+      this._configureSceneLightingForRT(this.currentSunData, this.currentD65);
+      this.needsLightsUpdate = true;
+    }
     this._pathTracer.updateCamera();
   }
 
-  onGeometryChanged() {
+  notifyGeometryChanged() {
     if (!this.active) return;
     this.needsRebuild = true;
     this.paused = false;
     if (this._pathTracer) this._pathTracer.pausePathTracing = false;
   }
 
-  onMaterialsChanged() {
+  notifyMaterialsChanged() {
     if (!this.active) return;
     this.needsMaterialsUpdate = true;
     this.paused = false;
     if (this._pathTracer) this._pathTracer.pausePathTracing = false;
   }
 
-  onLightingChanged(lightingMode) {
-    if (!this.active) return;
-    this._configureSceneLightingForRT(lightingMode);
-    this.needsEnvUpdate = true;
-    this.needsLightsUpdate = true;
-    this.needsMaterialsUpdate = true; // emissiveIntensity on underCabStripMat / pendantBulbMat changed
-    this.paused = false;
-    if (this._pathTracer) this._pathTracer.pausePathTracing = false;
-  }
-
-  onResize() {
+  notifyResize() {
     if (!this.active || !this._pathTracer) return;
+    const safeDpr = Math.min(window.devicePixelRatio || 1, this.getMaxDpr());
+    this.renderer.setPixelRatio(safeDpr);
     this._pathTracer.updateCamera();
   }
 
+  onCameraMoved() { this.notifyCameraChanged(); }
+  onGeometryChanged() { this.notifyGeometryChanged(); }
+  onMaterialsChanged() { this.notifyMaterialsChanged(); }
+  onResize() { this.notifyResize(); }
+
   get samples() {
-    return this._pathTracer ? this._pathTracer.samples : 0;
+    return this._pathTracer ? Math.floor(this._pathTracer.samples) : 0;
   }
 
-  get isCompiling() {
-    return Boolean(this._pathTracer && this._pathTracer.isCompiling);
-  }
-
-  get isConverged() {
-    return this.active && this.samples >= this.targetSamples;
-  }
-
-  /**
-   * Called every RAF while active. Handles deferred scene/material updates and auto-pauses on convergence.
-   */
   renderFrame() {
-    if (!this.active || !this._pathTracer) return;
+    if (!this.active || !this._pathTracer) return null;
 
     if (this.needsRebuild) {
       this.needsRebuild = false;
       this.needsMaterialsUpdate = false;
       this.needsLightsUpdate = false;
       this.needsEnvUpdate = false;
+      this._restoreHiddenMeshes();
+      this._hideRtIncompatibleMeshes();
       this._pathTracer.setScene(this.scene, this.camera);
     } else {
       if (this.needsMaterialsUpdate) {
@@ -577,52 +700,19 @@ export class KitchenRayTracer {
       }
     }
 
-    // Auto-pause once target samples are reached to save phone battery & GPU heat
     if (!this.paused && this._pathTracer.samples >= this.targetSamples) {
       this.paused = true;
       this._pathTracer.pausePathTracing = true;
     }
 
     this._pathTracer.renderSample();
-  }
 
-  /**
-   * Captures the exact current ray-traced (and denoised if enabled) frame to a PNG Blob.
-   */
-  capturePngBlob() {
-    return new Promise((resolve, reject) => {
-      if (!this.active || !this._pathTracer) {
-        reject(new Error('Ray tracer is not active'));
-        return;
-      }
-      // Temporarily ensure we blit the current accumulated target without adding a new partial tile
-      const prevPaused = this._pathTracer.pausePathTracing;
-      this._pathTracer.pausePathTracing = true;
-      this._pathTracer.renderSample();
-      this.renderer.domElement.toBlob(
-        (blob) => {
-          this._pathTracer.pausePathTracing = prevPaused;
-          if (blob) resolve(blob);
-          else reject(new Error('Canvas PNG export failed'));
-        },
-        'image/png'
-      );
-    });
-  }
-
-  dispose() {
-    this.disable();
-    this._hdrEnvCache.forEach(tex => tex.dispose());
-    this._hdrEnvCache.clear();
-    if (this._denoiseQuad) {
-      this._denoiseQuad.material.dispose();
-      this._denoiseQuad.dispose();
-      this._denoiseQuad = null;
-    }
-    if (this._pathTracer) {
-      this._pathTracer.dispose();
-      this._pathTracer = null;
-    }
-    this.initialized = false;
+    return {
+      samples: Math.floor(this._pathTracer.samples),
+      targetSamples: this.targetSamples,
+      isCompiling: Boolean(this._pathTracer.isCompiling),
+      converged: this._pathTracer.samples >= this.targetSamples,
+      paused: this.paused
+    };
   }
 }

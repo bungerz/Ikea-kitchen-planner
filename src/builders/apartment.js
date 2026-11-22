@@ -140,9 +140,10 @@ function addWindowUnit(parent, { axis, coord, s, e, y0, y1, depth = 0.24 }) {
     if (len >= 1.15) addBar(0.045, h - frameT * 2, frameD * 0.85, 0, 0, 0);
     // Interior sill
     addBar(len + 0.04, 0.025, depth + 0.02, 0, -h / 2 - 0.012, 0, frameMat);
-    // Glass pane
+    // Glass pane (tagged so GPU path tracer bypasses refractive MIS blocking!)
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(len - frameT * 2, h - frameT * 2), glassMat);
     glass.material.side = THREE.DoubleSide;
+    glass.userData.isWindowGlass = true;
     group.add(glass);
     // Subtle dark exterior drip trim
     addBar(len + 0.02, 0.02, 0.04, 0, h / 2 - 0.01, depth / 2 - 0.02, extFrameMat);
@@ -158,6 +159,7 @@ function addWindowUnit(parent, { axis, coord, s, e, y0, y1, depth = 0.24 }) {
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(len - frameT * 2, h - frameT * 2), glassMat);
     glass.rotation.y = Math.PI / 2;
     glass.material.side = THREE.DoubleSide;
+    glass.userData.isWindowGlass = true;
     group.add(glass);
     group.position.set(coord, midY, mid);
   }

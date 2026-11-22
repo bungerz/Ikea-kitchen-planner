@@ -67,6 +67,9 @@ export function buildCassiopeeEnvironment(scene) {
   });
   const skyDome = new THREE.Mesh(new THREE.SphereGeometry(240, 32, 20), skyMat);
   skyDome.position.set(5.6, 0, 5.6);
+  // CRITICAL for WebGL2 GPU Path Tracing: ShaderMaterial sky sphere must be hidden in BVH
+  // so it never occludes HDR ProceduralEquirectTexture sky & real Ambilly sunlight!
+  skyDome.userData.hideInRT = true;
   envGroup.add(skyDome);
 
   /* =====================================================================
@@ -137,6 +140,7 @@ export function buildCassiopeeEnvironment(scene) {
   terrain.rotation.x = -Math.PI / 2;
   terrain.position.set(5.6, GROUND_Y, 5.6);
   terrain.receiveShadow = true;
+  terrain.userData.hideInRT = true;
   envGroup.add(terrain);
 
   // Rue de la Fraternité (asphalt street running alongside the Ecoquartier)
@@ -206,6 +210,7 @@ export function buildCassiopeeEnvironment(scene) {
     );
     m.position.set(nb.x, GROUND_Y + nb.h / 2, nb.z);
     m.receiveShadow = true;
+    m.userData.hideInRT = true; // Keep golden-hour Ambilly sun unobstructed in path tracer!
     envGroup.add(m);
   });
 
@@ -244,6 +249,7 @@ export function buildCassiopeeEnvironment(scene) {
   ], 165, 34, saleveMat);
   saleve.position.set(-12, GROUND_Y - 2, 165);
   saleve.rotation.y = Math.PI + 0.16; // Faces back toward our Loggia & SSW windows!
+  saleve.userData.hideInRT = true;
   envGroup.add(saleve);
 
   // Massif du Jura (distant blue-grey ridge across Lake Geneva to the North-West)
@@ -252,6 +258,7 @@ export function buildCassiopeeEnvironment(scene) {
   ], 175, 24, mountainMat);
   jura.position.set(-155, GROUND_Y - 2, -45);
   jura.rotation.y = Math.PI / 2 - 0.25;
+  jura.userData.hideInRT = true;
   envGroup.add(jura);
 
   // Les Voirons / Pre-Alps (East-Northeast horizon)
@@ -260,6 +267,7 @@ export function buildCassiopeeEnvironment(scene) {
   ], 170, 28, mountainMat);
   voirons.position.set(165, GROUND_Y - 2, -10);
   voirons.rotation.y = -Math.PI / 2;
+  voirons.userData.hideInRT = true;
   envGroup.add(voirons);
 
   return {

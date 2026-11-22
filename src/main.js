@@ -303,7 +303,8 @@ function initThree() {
     const vp = document.getElementById('viewport');
     const w = Math.max(100, vp.clientWidth);
     const h = Math.max(100, vp.clientHeight);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const maxDpr = (rtActive && rayTracer) ? rayTracer.getMaxDpr() : 2;
+    const dpr = Math.min(window.devicePixelRatio || 1, maxDpr);
     renderer.setPixelRatio(dpr);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
@@ -429,7 +430,7 @@ function applyAmbillySun() {
   const slider = document.getElementById('sun-hour-slider');
   if (slider && Number(slider.value) !== state.sunHour) slider.value = String(state.sunHour);
 
-  if (rtActive && rayTracer) rayTracer.setLightingMode(state.lightingMode);
+  if (rtActive && rayTracer) rayTracer.syncAmbillySun(sunData, state.d65Override);
 }
 
 function setCeilingsVisible(visible) {
@@ -522,19 +523,22 @@ async function toggleRayTracing() {
         constants: { WALL_CAB_BOT: 1.48, BACK_WALL_Z: 3.13, LEFT_WALL_X: 0.26, CEILING_Y: 2.50 }
       });
       document.getElementById('sidebar-rt-gpu').textContent = rayTracer.gpuLabel;
+      window.__rt = rayTracer;
     }
 
-    // Hide selection ring & ensure ceilings match view for physically accurate GI
+    // Keep dynamic point light refs synced & hide selection ring during RT
+    rayTracer.lightRefs.pendantLights = dynamicFixtureLights;
     const prevSel = manipulator.selectedUid;
     if (prevSel) manipulator.select(null);
 
-    await rayTracer.enable(state.lightingMode, () => {});
+    const sunData = computeAmbillySun(state.sunSeason, state.sunHour);
+    await rayTracer.enable({ sunData, d65Override: state.d65Override }, () => {});
     rtActive = true;
     hud.classList.remove('hidden');
     btnLabel.textContent = 'Exit RT';
     sideBtn.textContent = 'Exit Ray Tracing (Back to 60fps)';
     updateRtProfileButtons();
-    showToast(`GPU Path Tracing active (${rayTracer.gpuLabel})`);
+    showToast(`GPU Path Tracing active (${rayTracer.gpuLabel} · ${rayTracer.profileKey.toUpperCase()})`);
   } catch (err) {
     console.error('Ray tracing init error:', err);
     btnLabel.textContent = 'Ray Trace';
@@ -1821,9 +1825,15 @@ function animate(now) {
     if (info && now - rtLastHudTs > 120) {
       rtLastHudTs = now;
       const pct = Math.min(100, Math.round((info.samples / info.targetSamples) * 100));
-      document.getElementById('rt-samples-text').textContent = `${info.samples} / ${info.targetSamples}`;
+      document.getElementById('rt-samples-text').textContent = info.isCompiling
+        ? 'Compiling…'
+        : `${info.samples} / ${info.targetSamples}`;
       document.getElementById('rt-progress-bar').style.width = `${pct}%`;
-      document.getElementById('rt-status-text').textContent = info.converged ? 'Converged ✓' : 'Path Tracing…';
+      document.getElementById('rt-status-text').textContent = info.isCompiling
+        ? 'Compiling GPU Shader…'
+        : info.converged
+          ? 'Converged ✓'
+          : 'Path Tracing…';
     }
   } else {
     renderer.render(scene, camera);
