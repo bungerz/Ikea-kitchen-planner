@@ -310,12 +310,13 @@ export function buildApartmentShell(scene) {
   // Loggia Outdoor Terrace (slightly stepped down 2cm)
   addFloorRect(0.20, 5.34, 8.76, 11.16, loggiaFloorMat, -0.02);
 
-  // Ground architectural plinth surrounding apartment for clean cutaway look
+  // Optional clean studio plinth (hidden when R+4 Ambilly building context is active)
   const groundMat = new THREE.MeshStandardMaterial({ color: '#DEDAD2', roughness: 0.95 });
   const groundPlane = new THREE.Mesh(new THREE.PlaneGeometry(46, 46), groundMat);
   groundPlane.rotation.x = -Math.PI / 2;
   groundPlane.position.set(5.6, -0.15, 5.6);
   groundPlane.receiveShadow = true;
+  groundPlane.visible = false;
   root.add(groundPlane);
 
   /* =====================================================================
@@ -514,7 +515,8 @@ export function buildApartmentShell(scene) {
   return {
     root,
     ceilingGroup,
-    roomPaintMaterials
+    roomPaintMaterials,
+    studioGroundPlane: groundPlane
   };
 }
 

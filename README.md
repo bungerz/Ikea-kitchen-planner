@@ -16,7 +16,14 @@ Interactive full-apartment 3D interior planner modeled to the centimeter from th
 - **Mobili Fiver Extensible Dining Tables (Walnut Default)**: 6 Mobili Fiver models (`EMMA`, `FIRST`, `EVOLUTION`, `EASY`, `ANGELICA` Round→Oval, `RACHELE`) with interactive 3-step extension (`Closed` → `+1 Leaf` → `Full Ext.`) and dynamic chair layout.
 - **Effortless 3D Drag & Drop UX**: Click/drag any furniture directly on the floor with 5 cm grid snap (`G`), live cm wall-clearance readouts, `R` / `Shift+R` rotation, `Ctrl+Z` / `Ctrl+Y` undo/redo, cutaway/ceiling toggle, and auto-save (`localStorage` + JSON export).
 - **Default TMA Light Fixtures**: Curated pendant, flush, and Chambre 3 sconce families mapped to every TMA DCL point, plus Morning / Daylight D65 / Cozy Evening modes and **On-Demand WebGL2 GPU Path Tracing**.
-- **✨ Prompt Component Studio (Phase 1 Live / Next-Task Roadmap)**: Generate custom parametric 3D furniture (e.g. *"Walnut sideboard 180x45x78 in séjour"*) or edit room paints/furniture via natural French/English prompts.
+- **4th-Floor (`R+4`) Résidence Cassiopée & Real Ambilly Sun Simulator**:
+  - Exact geolocation (`46.1941° N, 6.2230° E`, **7 rue de la Fraternité, 74100 Ambilly**) and blueprint compass orientation (`Plan Top = NNE 17°`, **Loggia / Ch.1 / Ch.2 = SSW**, **Séjour / Ch.3 = WNW**).
+  - Real NOAA solar azimuth & elevation calculator with season selector (`Summer`, `Equinox`, `Autumn`, `Winter`), live time-of-day slider (`05:30 → 22:30`), `▶ Play Day` solar timelapse, and dynamic physical sky dome.
+  - 4-story Clément Vergely gridded pale-limestone facade descending to street level (`-11.6 m`), landscaped *Écoquartier de l'Étoile* courtyard & trees, and distant **Mont Salève (SSW)**, **Jura (NW)**, and **Voirons (E)** horizon ridges (toggleable via `R+4 View`).
+- **✨ Phase 2 Prompt 3D Studio (The Grail)**:
+  - Declarative multi-part 3D CAD schema (`parts[]`) with 12 built-in designer recipes (fluted walnut sideboard, arched brass mirror, curved bouclé chair, designer bookcase, marble coffee table, backlit vanity, kitchen bar stools, arc lamp, wine cabinet, etc.).
+  - **Iterative Prompt Editing** on any selected piece (*"make it 30cm wider"*, *"change legs to brass"*, *"switch to walnut"*).
+  - **Custom `.GLB / .GLTF` 3D Model Importer** + optional **Live LLM 3D Engine (Gemini 2.5 Flash / OpenAI BYOK)** stored locally in your browser.
 
 ## Local Development
 

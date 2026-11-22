@@ -120,7 +120,7 @@ export const ROOMS = [
     floorType: 'loggiaTile',
     bounds: { minX: 0.26, maxX: 5.27, minZ: 8.82, maxZ: 11.11 },
     accentWall: 'north',
-    camera: { pos: [4.65, 1.62, 10.65], target: [1.80, 0.85, 9.65] },
+    camera: { pos: [3.35, 1.65, 8.95], target: [2.75, 1.15, 14.5] },
     paintDefault: 'original-white'
   }
 ];

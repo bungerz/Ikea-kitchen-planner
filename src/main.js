@@ -22,8 +22,21 @@ import {
 import { buildApartmentShell } from './builders/apartment.js';
 import { KitchenBuilder } from './builders/kitchen.js';
 import { buildFurnitureItemMesh, buildLightFixtures } from './builders/furniture3d.js';
+import { parseGlbFile } from './builders/richComponent3d.js';
 import { FurnitureManipulator } from './interaction/manipulator.js';
-import { interpretPrompt } from './promptStudio.js';
+import {
+  interpretPromptAsync,
+  applyLocalEditPatch,
+  loadAiConfig,
+  saveAiConfig
+} from './promptStudio.js';
+import {
+  SEASON_PRESETS,
+  computeAmbillySun,
+  formatHour,
+  compassLabel
+} from './environment/ambillySun.js';
+import { buildCassiopeeEnvironment } from './environment/cassiopeeBuilding.js';
 
 const STORAGE_KEY = 'cassiopee_ambilly_lot17_v1';
 
@@ -37,7 +50,11 @@ function createDefaultState() {
     activeBedRoom: 'ch3',
     activePaintRoom: 'ch3',
     showCeilings: false,
-    lightingMode: 'morning', // 'morning' | 'daylight' | 'evening'
+    showBuilding: true,      // 4th Floor (R+4) Cassiopée Ambilly surroundings ON by default!
+    sunSeason: 'summer',     // 'summer' | 'spring' | 'autumn' | 'winter'
+    sunHour: 16.0,           // 16:00 CEST — glorious SSW/WNW Ambilly afternoon sun!
+    d65Override: false,      // Optional Neutral D65 studio color-check override
+    lightingMode: 'morning', // Derived for raytracer/fixtures ('morning' | 'daylight' | 'evening')
 
     // Per-room wall paints: ORIGINAL WHITE BY DEFAULT (no Dulux Valentine until chosen!)
     roomPaints: {
@@ -112,7 +129,10 @@ function saveState() {
       kitchen: state.kitchen,
       items: state.items,
       customLibrary: state.customLibrary,
-      lightingMode: state.lightingMode
+      lightingMode: state.lightingMode,
+      sunSeason: state.sunSeason,
+      sunHour: state.sunHour,
+      showBuilding: state.showBuilding
     }));
   } catch (_) {}
 }
@@ -166,10 +186,12 @@ function redo() {
  * 2. THREE.JS SCENE, RENDERER, LIGHTS & CAMERA ANIMATION
  * ========================================================================= */
 let renderer, scene, camera, controls;
-let apartmentShell, kitchenBuilder, manipulator;
+let apartmentShell, cassiopeeEnv, kitchenBuilder, manipulator;
 let movableGroup, fixturesGroup;
 let sunLight, hemiLight, fillLight;
 let dynamicFixtureLights = [];
+let sunPlaying = false;
+let lastSunAnimTs = 0;
 
 // Smooth camera tween
 let camTween = null;
@@ -198,15 +220,15 @@ function initThree() {
   scene.environmentIntensity = 0.45;
   pmrem.dispose();
 
-  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 90);
+  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 420);
   camera.position.set(...OVERVIEW_CAMERAS.cutaway.pos);
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.075;
-  controls.maxPolarAngle = Math.PI * 0.492;
+  controls.maxPolarAngle = Math.PI * 0.56; // Allows looking slightly up from 4th-floor Loggia toward sky & Salève!
   controls.minDistance = 0.85;
-  controls.maxDistance = 26;
+  controls.maxDistance = 32;
   controls.target.set(...OVERVIEW_CAMERAS.cutaway.target);
   controls.update();
 
@@ -237,7 +259,8 @@ function initThree() {
   fillLight.position.set(14, 7, -4);
   scene.add(fillLight);
 
-  // Build Apartment Shell + Exact IKEA METOD Kitchen
+  // Build 4th-Floor (R+4) Cassiopée Ambilly Surroundings + Apartment Shell + Exact IKEA METOD Kitchen
+  cassiopeeEnv = buildCassiopeeEnvironment(scene);
   apartmentShell = buildApartmentShell(scene);
   kitchenBuilder = new KitchenBuilder(scene);
   kitchenBuilder.applyAll(state.kitchen);
@@ -252,7 +275,8 @@ function initThree() {
 
   rebuildAllMovables();
   applyAllRoomPaints();
-  applyLightingAtmosphere(state.lightingMode);
+  setBuildingContextVisible(state.showBuilding);
+  applyAmbillySun();
 
   // Direct 3D Furniture Manipulator (Click/Tap & Drag!)
   manipulator = new FurnitureManipulator({
@@ -338,18 +362,21 @@ function applyAllRoomPaints() {
   }
 }
 
-function applyLightingAtmosphere(mode) {
-  state.lightingMode = mode;
-  if (mode === 'morning') {
-    scene.background.set('#E6E2DA');
-    scene.environmentIntensity = 0.48;
-    hemiLight.intensity = 0.72;
-    sunLight.color.set('#FFF3E2');
-    sunLight.intensity = 1.85;
-    sunLight.position.set(-4.5, 11.5, 13.5);
-    fillLight.intensity = 0.48;
-    renderer.toneMappingExposure = 0.96;
-  } else if (mode === 'daylight') {
+function setBuildingContextVisible(visible) {
+  state.showBuilding = Boolean(visible);
+  if (cassiopeeEnv) cassiopeeEnv.setVisible(state.showBuilding);
+  if (apartmentShell?.studioGroundPlane) apartmentShell.studioGroundPlane.visible = !state.showBuilding;
+  const lbl = document.getElementById('lbl-building');
+  if (lbl) lbl.textContent = state.showBuilding ? 'R+4 View ✓' : 'Studio Plinth';
+  notifyRayTracerGeometryChange();
+}
+
+function applyAmbillySun() {
+  const sunData = computeAmbillySun(state.sunSeason, state.sunHour);
+  const prevLightingMode = state.lightingMode;
+
+  if (state.d65Override) {
+    state.lightingMode = 'daylight';
     scene.background.set('#ECECE9');
     scene.environmentIntensity = 0.62;
     hemiLight.intensity = 0.90;
@@ -359,17 +386,50 @@ function applyLightingAtmosphere(mode) {
     fillLight.intensity = 0.65;
     renderer.toneMappingExposure = 0.95;
   } else {
-    // Cozy Evening: dim exterior, warm glowing TMA pendants & sconces!
-    scene.background.set('#1C2028');
-    scene.environmentIntensity = 0.14;
-    hemiLight.intensity = 0.22;
-    sunLight.color.set('#6E82A8');
-    sunLight.intensity = 0.22;
-    fillLight.intensity = 0.10;
-    renderer.toneMappingExposure = 1.02;
+    state.lightingMode = sunData.lightsRecommendedOn ? 'evening' : 'morning';
+    scene.background.copy(sunData.skyHorizon);
+    scene.environmentIntensity = sunData.envIntensity;
+    hemiLight.intensity = sunData.hemiIntensity;
+    sunLight.color.copy(sunData.sunColor);
+    sunLight.intensity = sunData.sunIntensity;
+    // Place directional sun 24 m from apartment center (5.6, 1.2, 5.6) along true NOAA vector
+    sunLight.position.set(
+      5.6 + sunData.dir.x * 24,
+      Math.max(2.2, sunData.dir.y * 24),
+      5.6 + sunData.dir.z * 24
+    );
+    fillLight.intensity = sunData.isNight ? 0.12 : 0.42;
+    renderer.toneMappingExposure = sunData.isNight ? 1.02 : 0.96;
   }
-  rebuildLights();
-  if (rtActive && rayTracer) rayTracer.setLightingMode(mode);
+
+  if (cassiopeeEnv) cassiopeeEnv.updateSky(sunData);
+
+  // Rebuild indoor lights only when crossing day <-> twilight/night threshold
+  if (prevLightingMode !== state.lightingMode || !fixturesGroup.children.length) {
+    rebuildLights();
+  }
+
+  // Update top-left viewport solar HUD & Lights tab readouts
+  const timeStr = formatHour(state.sunHour);
+  const dirLbl = compassLabel(sunData.azimuthDeg);
+  const hudLine = document.getElementById('sun-hud-line');
+  if (hudLine) {
+    hudLine.textContent = state.d65Override
+      ? `7 rue de la Fraternité · Neutral D65 Color Check`
+      : `7 rue de la Fraternité · ${sunData.isNight ? '🌙' : '☀️'} ${timeStr} · ${dirLbl} (${Math.round(sunData.elevationDeg)}°)`;
+  }
+  const tVal = document.getElementById('sun-time-val');
+  if (tVal) tVal.textContent = timeStr;
+  const aVal = document.getElementById('sun-angles-val');
+  if (aVal) aVal.textContent = `Az ${Math.round(sunData.azimuthDeg)}° (${dirLbl}) · Elev ${Math.round(sunData.elevationDeg)}°`;
+  const srLbl = document.getElementById('sun-sunrise-lbl');
+  if (srLbl) srLbl.textContent = `Sunrise ${formatHour(sunData.sunriseHour)}`;
+  const ssLbl = document.getElementById('sun-sunset-lbl');
+  if (ssLbl) ssLbl.textContent = `Sunset ${formatHour(sunData.sunsetHour)}`;
+  const slider = document.getElementById('sun-hour-slider');
+  if (slider && Number(slider.value) !== state.sunHour) slider.value = String(state.sunHour);
+
+  if (rtActive && rayTracer) rayTracer.setLightingMode(state.lightingMode);
 }
 
 function setCeilingsVisible(visible) {
@@ -507,11 +567,18 @@ function showToast(msg) {
 
 function updateSelectionHUD(item, clearance) {
   const hud = document.getElementById('selection-hud');
+  const promptPill = document.getElementById('prompt-selected-pill');
+  const promptName = document.getElementById('prompt-selected-name');
   if (!item) {
     hud.classList.add('hidden');
+    if (promptPill) promptPill.classList.add('hidden');
     return;
   }
   hud.classList.remove('hidden');
+  if (promptPill && promptName) {
+    promptName.textContent = item.label || item.kind;
+    promptPill.classList.remove('hidden');
+  }
   document.getElementById('sel-name').textContent = item.label || item.kind;
   const clEl = document.getElementById('sel-clearance');
   if (clearance && clearance.northCm !== undefined) {
@@ -833,14 +900,25 @@ function renderKitchenPanel() {
   });
 }
 
-/* ---- TAB 4: LIGHTS & FIXTURES ---- */
+/* ---- TAB 4: AMBILLY R+4 SUN & TMA LIGHT FIXTURES ---- */
 function renderLightsPanel() {
-  document.querySelectorAll('.light-btn').forEach(b => {
-    const active = b.dataset.light === state.lightingMode;
-    b.className = `light-btn py-2 px-1 rounded-xl border text-center cursor-pointer ${
-      active ? 'border-studio-ink bg-studio-subtle ring-1 ring-studio-ink' : 'border-studio-border bg-white hover:bg-studio-bg'
+  const seasonGrid = document.getElementById('season-grid');
+  if (seasonGrid) {
+    seasonGrid.innerHTML = SEASON_PRESETS.map(s => {
+      const active = state.sunSeason === s.id;
+      return `<button data-sun-season="${s.id}" type="button" class="py-1.5 px-2 rounded-xl border text-[10.5px] font-semibold cursor-pointer ${
+        active ? 'border-studio-ink bg-studio-subtle ring-1 ring-studio-ink text-studio-ink' : 'border-studio-border bg-white text-studio-muted hover:bg-studio-bg'
+      }">${s.label}</button>`;
+    }).join('');
+  }
+  const d65Btn = document.getElementById('btn-d65-toggle');
+  if (d65Btn) {
+    d65Btn.textContent = `☁️ Neutral D65: ${state.d65Override ? 'ON' : 'OFF'}`;
+    d65Btn.className = `px-2.5 py-1 rounded-lg border text-[10px] font-semibold cursor-pointer ${
+      state.d65Override ? 'bg-studio-ink text-white border-studio-ink' : 'border-studio-border hover:bg-studio-subtle text-studio-ink'
     }`;
-  });
+  }
+  applyAmbillySun();
 
   const fixtureRooms = [
     { id: 'sejour', label: 'Séjour (Dining #9 & Lounge #8)' },
@@ -868,16 +946,34 @@ function renderLightsPanel() {
   }).join('');
 }
 
-/* ---- TAB 5: PROMPT COMPONENT STUDIO ---- */
+/* ---- TAB 5: PHASE 2 PROMPT 3D STUDIO ---- */
 function renderPromptPanel() {
+  const aiCfg = loadAiConfig();
+  const badge = document.getElementById('ai-mode-badge');
+  if (badge) {
+    badge.textContent = aiCfg.provider === 'gemini' && aiCfg.apiKey
+      ? 'Phase 2 · Gemini Live'
+      : aiCfg.provider === 'openai' && aiCfg.apiKey
+        ? 'Phase 2 · LLM Live'
+        : 'Phase 2 · Local CAD';
+  }
+  const provSel = document.getElementById('ai-provider');
+  const keyInp = document.getElementById('ai-api-key');
+  const modInp = document.getElementById('ai-model');
+  if (provSel) provSel.value = aiCfg.provider || 'local';
+  if (keyInp && !keyInp.value && aiCfg.apiKey) keyInp.value = aiCfg.apiKey;
+  if (modInp && !modInp.value) modInp.value = aiCfg.model || 'gemini-2.5-flash';
+
   const examples = [
-    'Walnut sideboard 180x45x78 in séjour',
+    'Arched brass floor mirror in ch3',
+    'Curved bouclé lounge chair in séjour',
+    'Fluted walnut sideboard 160x45x78 in séjour',
+    'Dressing vanity with mirror in ch3',
+    'Pair of kitchen bar stools',
+    'Designer oak bookcase 120x35x200 in ch2',
     'Round marble coffee table 85cm',
-    'Paint ch3 light taupe accent wall',
-    'Peindre wc en vert sauge',
-    'Extend Mobili Fiver table to 240cm',
-    'Oak bookcase 120x35x200 in ch2',
-    'Swap master bed to TUFJORD'
+    'Golden hour summer sunset',
+    'Make it 30cm wider'
   ];
   document.getElementById('prompt-examples').innerHTML = examples.map(ex => `
     <button data-prompt-ex="${ex}" type="button" class="px-2 py-1 rounded-lg bg-studio-bg hover:bg-studio-subtle border border-studio-border text-[10px] font-medium text-studio-ink cursor-pointer">${ex}</button>
@@ -886,13 +982,13 @@ function renderPromptPanel() {
   document.getElementById('custom-lib-count').textContent = `${state.customLibrary.length} saved`;
   const libEl = document.getElementById('custom-lib-list');
   if (!state.customLibrary.length) {
-    libEl.innerHTML = `<div class="text-[10.5px] text-studio-muted py-1">No prompted components yet — try an example above!</div>`;
+    libEl.innerHTML = `<div class="text-[10.5px] text-studio-muted py-1">No prompted components yet — try a designer prompt above or drop a .glb file!</div>`;
   } else {
     libEl.innerHTML = state.customLibrary.map((c, idx) => `
       <div class="flex items-center justify-between gap-2 p-2 rounded-xl bg-studio-bg border border-studio-border">
         <div class="min-w-0">
           <div class="text-[11px] font-bold text-studio-ink truncate">${c.label}</div>
-          <div class="text-[9.5px] text-studio-muted truncate">"${c.promptSource}"</div>
+          <div class="text-[9.5px] text-studio-muted truncate">"${c.promptSource || 'Custom 3D'}"</div>
         </div>
         <button data-respawn-idx="${idx}" type="button" class="shrink-0 px-2 py-1 rounded-lg bg-studio-ink text-white text-[10px] font-semibold cursor-pointer">+ Spawn</button>
       </div>
@@ -992,15 +1088,60 @@ function flyToCustomCamera(pos, target, ceilings = true) {
   };
 }
 
-function executePrompt(text) {
-  const res = interpretPrompt(text, getAddTargetRoom());
+async function executePrompt(text) {
+  const submitBtn = document.getElementById('btn-prompt-submit');
   const fb = document.getElementById('prompt-feedback');
+  const selectedItem = state.items.find(i => i.uid === manipulator?.selectedUid) || null;
+  const aiConfig = loadAiConfig();
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = aiConfig.provider !== 'local' && aiConfig.apiKey ? '✨ LLM Modelising 3D…' : '✨ Modelising…';
+  }
+
+  let res;
+  try {
+    res = await interpretPromptAsync(text, {
+      activeRoom: getAddTargetRoom(),
+      selectedItem,
+      aiConfig
+    });
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '✨ Modelise & Apply';
+    }
+  }
+
   fb.textContent = res.message;
   fb.classList.remove('hidden');
 
   if (res.type === 'noop') return;
 
-  if (res.type === 'paintRoom') {
+  if (res.type === 'setSun') {
+    state.d65Override = false;
+    if (res.season) state.sunSeason = res.season;
+    if (res.hour !== null) state.sunHour = Math.max(5.5, Math.min(22.5, res.hour));
+    applyAmbillySun();
+  } else if (res.type === 'editSelected') {
+    const item = state.items.find(i => i.uid === res.uid);
+    if (item) {
+      applyLocalEditPatch(item, res.patch);
+      rebuildSingleMovable(item.uid);
+      manipulator.select(item.uid);
+      notifyRayTracerGeometryChange();
+    }
+  } else if (res.type === 'replaceCustomSpec') {
+    const item = state.items.find(i => i.uid === res.uid);
+    if (item) {
+      item.label = res.label;
+      item.w = res.w; item.d = res.d; item.h = res.h;
+      item.spec = res.spec;
+      rebuildSingleMovable(item.uid);
+      manipulator.select(item.uid);
+      notifyRayTracerGeometryChange();
+    }
+  } else if (res.type === 'paintRoom') {
     state.roomPaints[res.roomId] = { paintId: res.paintId, coverage: res.accentOnly ? 'accent' : 'all' };
     state.activePaintRoom = res.roomId;
     applyAllRoomPaints();
@@ -1063,6 +1204,11 @@ function executePrompt(text) {
 function bindEvents() {
   // Top Viewport Controls
   document.getElementById('btn-roof').addEventListener('click', () => setCeilingsVisible(!state.showCeilings));
+  document.getElementById('btn-building').addEventListener('click', () => {
+    setBuildingContextVisible(!state.showBuilding);
+    saveState();
+    showToast(state.showBuilding ? '4th Floor (R+4) Ambilly context ON' : 'Clean Studio Plinth mode');
+  });
   document.getElementById('btn-snap').addEventListener('click', () => {
     manipulator.snapEnabled = !manipulator.snapEnabled;
     document.getElementById('lbl-snap').textContent = manipulator.snapEnabled ? 'Snap 5cm ✓' : 'Free Drag';
@@ -1461,12 +1607,43 @@ function bindEvents() {
     }
   });
 
-  // ---- TAB 4: LIGHTS & STORAGE ----
+  // ---- TAB 4: AMBILLY R+4 SUN, TMA LIGHTS & STORAGE ----
+  document.getElementById('sun-hour-slider').addEventListener('input', (e) => {
+    state.d65Override = false;
+    state.sunHour = parseFloat(e.target.value);
+    applyAmbillySun();
+    saveState();
+  });
+
+  document.getElementById('btn-sun-play').addEventListener('click', () => {
+    sunPlaying = !sunPlaying;
+    state.d65Override = false;
+    document.getElementById('btn-sun-play').textContent = sunPlaying ? '⏸ Pause Sun' : '▶ Play Day';
+  });
+
+  document.getElementById('btn-d65-toggle').addEventListener('click', () => {
+    state.d65Override = !state.d65Override;
+    sunPlaying = false;
+    document.getElementById('btn-sun-play').textContent = '▶ Play Day';
+    renderLightsPanel();
+  });
+
   document.getElementById('panel-lights').addEventListener('click', (e) => {
-    const lBtn = e.target.closest('[data-light]');
-    if (lBtn) {
-      applyLightingAtmosphere(lBtn.dataset.light);
+    const sBtn = e.target.closest('[data-sun-season]');
+    if (sBtn) {
+      state.d65Override = false;
+      state.sunSeason = sBtn.dataset.sunSeason;
       renderLightsPanel();
+      saveState();
+      return;
+    }
+    const qSun = e.target.closest('[data-sun-quick]');
+    if (qSun) {
+      state.d65Override = false;
+      sunPlaying = false;
+      document.getElementById('btn-sun-play').textContent = '▶ Play Day';
+      state.sunHour = parseFloat(qSun.dataset.sunQuick);
+      applyAmbillySun();
       saveState();
       return;
     }
@@ -1495,7 +1672,8 @@ function bindEvents() {
     rebuildAllMovables();
     applyAllRoomPaints();
     kitchenBuilder.applyAll(state.kitchen);
-    applyLightingAtmosphere(state.lightingMode);
+    setBuildingContextVisible(state.showBuilding);
+    applyAmbillySun();
     manipulator.select(null);
     snapshotForUndo();
     renderAllUI();
@@ -1503,12 +1681,55 @@ function bindEvents() {
     showToast('Reset apartment to defaults');
   });
 
-  // ---- TAB 5: PROMPT COMPONENT STUDIO ----
+  // ---- TAB 5: PHASE 2 PROMPT 3D STUDIO + GLB IMPORT + BYOK LLM ----
   document.getElementById('prompt-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const inp = document.getElementById('prompt-input');
-    executePrompt(inp.value);
+    const val = inp.value;
     inp.value = '';
+    executePrompt(val);
+  });
+
+  document.getElementById('glb-file-input').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      showToast(`Loading ${file.name}…`);
+      const parsed = await parseGlbFile(file);
+      const rId = getAddTargetRoom();
+      const spot = findFreeSpotInRoom(rId, parsed.w, parsed.d);
+      const item = {
+        uid: `glb-${Date.now().toString(36)}`,
+        kind: 'customGlb',
+        glbId: parsed.glbId,
+        room: rId,
+        label: file.name.replace(/\.(glb|gltf)$/i, ''),
+        w: parsed.w, d: parsed.d, h: parsed.h,
+        scaleFactor: 1.0,
+        x: spot.x, z: spot.z, rotY: spot.rotY || 0
+      };
+      state.items.push(item);
+      rebuildSingleMovable(item.uid);
+      manipulator.select(item.uid);
+      flyToView(rId);
+      snapshotForUndo(); saveState(); notifyRayTracerGeometryChange();
+      showToast(`Imported 3D model "${item.label}" (${Math.round(parsed.w * 100)}×${Math.round(parsed.d * 100)} cm)`);
+    } catch (err) {
+      console.error('GLB import error:', err);
+      showToast('Could not parse .glb/.gltf file');
+    }
+    e.target.value = '';
+  });
+
+  document.getElementById('btn-ai-save').addEventListener('click', () => {
+    const cfg = {
+      provider: document.getElementById('ai-provider').value,
+      apiKey: document.getElementById('ai-api-key').value.trim(),
+      model: document.getElementById('ai-model').value.trim() || 'gemini-2.5-flash'
+    };
+    saveAiConfig(cfg);
+    renderPromptPanel();
+    showToast(cfg.provider === 'local' ? 'Using Built-in Designer Modeliser' : `Saved ${cfg.provider.toUpperCase()} Live 3D Engine`);
   });
 
   document.getElementById('panel-prompt').addEventListener('click', (e) => {
@@ -1574,6 +1795,14 @@ function bindEvents() {
  * ========================================================================= */
 function animate(now) {
   requestAnimationFrame(animate);
+
+  // Smooth Ambilly Solar Timelapse when ▶ Play Day is active
+  if (sunPlaying && now - lastSunAnimTs > 45) {
+    lastSunAnimTs = now;
+    state.sunHour += 0.08;
+    if (state.sunHour > 22.5) state.sunHour = 5.5;
+    applyAmbillySun();
+  }
 
   // Smooth camera transition
   if (camTween) {

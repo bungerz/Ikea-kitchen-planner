@@ -7,6 +7,7 @@ import {
 } from '../catalogs/furniture.js';
 import { WOOD_FINISHES, SOFA_FABRICS } from '../catalogs/materials.js';
 import { getWoodTexture, getFabricTexture } from './textures.js';
+import { buildRichComponentMesh, buildGlbItemMesh } from './richComponent3d.js';
 
 /* =========================================================================
  * 3D FURNITURE, LIGHT FIXTURES & PARAMETRIC PROMPT-TO-3D BUILDERS
@@ -647,6 +648,8 @@ export function buildFurnitureItemMesh(item) {
   if (item.kind === 'bed') group = buildIkeaBed(item);
   else if (item.kind === 'sofa') group = buildIkeaSofa(item);
   else if (item.kind === 'diningTable') group = buildMobiliFiverTable(item);
+  else if (item.kind === 'customParametric') group = buildRichComponentMesh(item);
+  else if (item.kind === 'customGlb') group = buildGlbItemMesh(item);
   else group = buildGenericFurniture(item);
 
   group.position.set(item.x, 0, item.z);

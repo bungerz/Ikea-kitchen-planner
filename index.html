@@ -94,18 +94,23 @@
       <div id="canvas-host" class="w-full h-full"></div>
 
       <!-- TOP-LEFT: Apartment Identity + Quick Tool Controls -->
-      <div class="absolute top-2.5 left-2.5 z-20 flex flex-wrap items-center gap-1.5 max-w-[68%]">
+      <div class="absolute top-2.5 left-2.5 z-20 flex flex-wrap items-center gap-1.5 max-w-[70%]">
         <div class="glass-pill rounded-xl px-2.5 py-1.5 flex items-center gap-2">
           <span class="w-2.5 h-2.5 rounded-full bg-amber-600 shrink-0"></span>
           <div class="leading-tight">
-            <div class="text-[11px] font-bold tracking-tight text-studio-ink">CASSIOPÉE · Ambilly T4</div>
-            <div class="text-[9.5px] text-studio-muted">Lot 17 · 83.4 m² + 11.5 m² Loggia</div>
+            <div class="text-[11px] font-bold tracking-tight text-studio-ink">CASSIOPÉE · Ambilly · 4ème Étage (R+4)</div>
+            <div id="sun-hud-line" class="text-[9.5px] text-studio-muted">7 rue de la Fraternité · 46.19°N 6.22°E · ☀️ 16:00</div>
           </div>
         </div>
 
         <button id="btn-roof" type="button" title="Toggle Ceilings (Cutaway vs Interior)"
           class="glass-pill h-8 px-2.5 rounded-xl text-[11px] font-semibold text-studio-ink hover:bg-white transition-all cursor-pointer flex items-center gap-1">
           <span>🏠</span><span id="lbl-roof">Cutaway</span>
+        </button>
+
+        <button id="btn-building" type="button" title="Toggle 4th-Floor Building & Ambilly Surroundings"
+          class="glass-pill h-8 px-2.5 rounded-xl text-[11px] font-semibold text-studio-ink hover:bg-white transition-all cursor-pointer">
+          <span id="lbl-building">R+4 View ✓</span>
         </button>
 
         <button id="btn-snap" type="button" title="Toggle 5 cm Grid Snap (G)"
@@ -392,26 +397,46 @@
           </div>
         </section>
 
-        <!-- ========== TAB 4: TMA LIGHT FIXTURES, AMBIANCE & RAY TRACING ========== -->
+        <!-- ========== TAB 4: AMBILLY R+4 SUN, TMA LIGHT FIXTURES & RAY TRACING ========== -->
         <section id="panel-lights" class="hidden space-y-3">
-          <!-- Atmosphere Mode -->
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <h2 class="text-xs font-bold text-studio-ink">Lighting Atmosphere</h2>
-            <div class="grid grid-cols-3 gap-1.5">
-              <button data-light="morning"  type="button" class="light-btn py-2 px-1 rounded-xl border text-center cursor-pointer">
-                <div class="text-sm">☀️</div>
-                <div class="text-[10.5px] font-semibold">Morning</div>
-              </button>
-              <button data-light="daylight" type="button" class="light-btn py-2 px-1 rounded-xl border text-center cursor-pointer">
-                <div class="text-sm">☁️</div>
-                <div class="text-[10.5px] font-semibold">Daylight D65</div>
-              </button>
-              <button data-light="evening"  type="button" class="light-btn py-2 px-1 rounded-xl border text-center cursor-pointer">
-                <div class="text-sm">🌙</div>
-                <div class="text-[10.5px] font-semibold">Evening</div>
-              </button>
+          <!-- REAL AMBILLY 4TH FLOOR ASTRONOMICAL SUN SIMULATOR -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <h2 class="text-xs font-bold text-studio-ink">☀️ Ambilly R+4 Sun Simulator</h2>
+                <p class="text-[10px] text-studio-muted">46.1941°N, 6.2230°E · Loggia SSW · Séjour WNW</p>
+              </div>
+              <button id="btn-sun-play" type="button" class="px-2.5 py-1 rounded-lg bg-studio-ink text-white text-[10px] font-bold cursor-pointer">▶ Play Day</button>
             </div>
-            <p class="text-[10px] text-studio-muted">Tip: Switch to <strong>Evening</strong> &amp; turn <strong>Ceilings ON</strong> to admire all TMA pendants and Chambre 3 sconces glowing warmly!</p>
+
+            <!-- Season Presets -->
+            <div id="season-grid" class="grid grid-cols-2 gap-1"></div>
+
+            <!-- Time of Day Slider -->
+            <div class="bg-studio-bg rounded-xl p-2.5 border border-studio-border space-y-1.5">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="font-bold text-studio-ink">Local Time: <span id="sun-time-val" class="font-mono text-studio-accent">16:00</span></span>
+                <span id="sun-angles-val" class="text-[10px] font-mono text-studio-muted">Az 242° · Elev 46°</span>
+              </div>
+              <input id="sun-hour-slider" type="range" min="5.5" max="22.5" step="0.25" value="16"
+                class="w-full accent-amber-600 cursor-pointer" />
+              <div class="flex items-center justify-between text-[9.5px] text-studio-muted font-mono">
+                <span id="sun-sunrise-lbl">Sunrise 05:49</span>
+                <span id="sun-sunset-lbl">Sunset 21:27</span>
+              </div>
+              <div class="grid grid-cols-4 gap-1 pt-1">
+                <button data-sun-quick="9.5"  type="button" class="sun-q-btn py-1 rounded-lg bg-white border border-studio-border hover:bg-studio-subtle text-[9.5px] font-semibold cursor-pointer">09:30</button>
+                <button data-sun-quick="13.5" type="button" class="sun-q-btn py-1 rounded-lg bg-white border border-studio-border hover:bg-studio-subtle text-[9.5px] font-semibold cursor-pointer">13:30</button>
+                <button data-sun-quick="18.5" type="button" class="sun-q-btn py-1 rounded-lg bg-white border border-studio-border hover:bg-studio-subtle text-[9.5px] font-semibold cursor-pointer">18:30</button>
+                <button data-sun-quick="21.5" type="button" class="sun-q-btn py-1 rounded-lg bg-white border border-studio-border hover:bg-studio-subtle text-[9.5px] font-semibold cursor-pointer">🌙 Night</button>
+              </div>
+            </div>
+
+            <!-- Neutral D65 Color Check Override -->
+            <div class="flex items-center justify-between gap-2 pt-0.5">
+              <span class="text-[10.5px] font-medium text-studio-muted">Color-Calibration Mode</span>
+              <button id="btn-d65-toggle" type="button" class="px-2.5 py-1 rounded-lg border border-studio-border text-[10px] font-semibold hover:bg-studio-subtle cursor-pointer">☁️ Neutral D65: OFF</button>
+            </div>
           </div>
 
           <!-- Per-Room TMA Light Fixtures -->
@@ -448,50 +473,82 @@
           </div>
         </section>
 
-        <!-- ========== TAB 5: AI PROMPT COMPONENT STUDIO (THE GRAIL — BETA!) ========== -->
+        <!-- ========== TAB 5: AI PROMPT COMPONENT STUDIO (PHASE 2 — THE GRAIL!) ========== -->
         <section id="panel-prompt" class="hidden space-y-3">
           <div class="bg-gradient-to-br from-[#1E1C19] to-[#342E27] text-white rounded-2xl p-3.5 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-bold flex items-center gap-1.5">✨ Prompt Component Studio</span>
-              <span class="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">Phase 1 Live</span>
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-bold flex items-center gap-1.5">✨ Prompt 3D Studio</span>
+              <span id="ai-mode-badge" class="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">Phase 2 · Local CAD</span>
             </div>
             <p class="text-[10.5px] text-white/80 leading-relaxed">
-              Describe a custom piece of furniture (with dimensions &amp; material) to modelise &amp; spawn it instantly, or type a room change in English or French!
+              Modelise multi-part 3D furniture, <strong>refine the selected piece</strong> (<em>"make it 30cm wider"</em>, <em>"brass legs"</em>), paint walls, or control Ambilly sun!
             </p>
+            <!-- Active Selection Context Pill -->
+            <div id="prompt-selected-pill" class="hidden text-[10px] bg-amber-400/15 border border-amber-400/35 text-amber-200 rounded-lg px-2 py-1 flex items-center justify-between gap-1">
+              <span>🎯 Selected: <strong id="prompt-selected-name"></strong> (edits apply directly!)</span>
+            </div>
             <form id="prompt-form" class="space-y-2">
-              <textarea id="prompt-input" rows="2" placeholder="e.g. Create a walnut sideboard 180x45x78 in séjour…"
+              <textarea id="prompt-input" rows="2" placeholder="e.g. Arched brass floor mirror in ch3, or 'make it 30cm wider'…"
                 class="w-full rounded-xl bg-white/10 border border-white/20 px-2.5 py-2 text-xs text-white placeholder-white/45 focus:outline-none focus:border-amber-400 resize-none"></textarea>
-              <button type="submit" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold cursor-pointer">
-                ✨ Generate &amp; Apply
+              <button id="btn-prompt-submit" type="submit" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold cursor-pointer">
+                ✨ Modelise &amp; Apply
               </button>
             </form>
             <div id="prompt-feedback" class="hidden text-[10.5px] bg-white/10 rounded-xl px-2.5 py-1.5 text-amber-200"></div>
           </div>
 
-          <!-- Try One-Click Prompt Examples -->
+          <!-- Try One-Click Phase 2 Designer Prompts -->
           <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <div class="text-[10px] font-bold uppercase tracking-wider text-studio-muted">Try Example Prompts</div>
+            <div class="text-[10px] font-bold uppercase tracking-wider text-studio-muted">Designer 3D Prompts (1-Click)</div>
             <div id="prompt-examples" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+          <!-- Custom .GLB / .GLTF 3D Model Importer -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xs font-bold text-studio-ink">📦 Import .GLB / .GLTF Model</h2>
+                <p class="text-[10px] text-studio-muted">Load real 3D meshes (IKEA, SketchUp, Tripo3D, Meshy)</p>
+              </div>
+            </div>
+            <label class="block w-full py-2 px-3 rounded-xl border border-dashed border-studio-accent/50 bg-studio-bg hover:bg-studio-subtle text-center text-[11px] font-semibold text-studio-ink cursor-pointer">
+              + Choose .glb / .gltf File
+              <input id="glb-file-input" type="file" accept=".glb,.gltf" class="hidden" />
+            </label>
           </div>
 
           <!-- Prompted Custom Library -->
           <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
             <div class="flex items-center justify-between">
-              <h2 class="text-xs font-bold text-studio-ink">Your Prompted Components</h2>
+              <h2 class="text-xs font-bold text-studio-ink">Your Prompted 3D Library</h2>
               <span id="custom-lib-count" class="text-[10px] font-mono text-studio-muted">0 saved</span>
             </div>
             <div id="custom-lib-list" class="space-y-1.5 text-[11px] text-studio-muted">
-              No prompted components yet — generate one above!
+              No prompted components yet — modelise one above!
             </div>
           </div>
 
-          <!-- Phase 2 Next-Task Roadmap -->
-          <div class="bg-studio-subtle/80 rounded-2xl border border-studio-border p-3 space-y-1">
-            <div class="text-[10.5px] font-bold text-studio-ink">🚀 Next Phase Roadmap (The Grail)</div>
-            <p class="text-[10px] text-studio-muted leading-relaxed">
-              The scene uses a declarative parametric schema (`customParametric`). Next task: plug in a Gemini / LLM JSON-to-3D or Tripo/Meshy GLB endpoint so any photo or URL (IKEA, Mobili Fiver, Maisons du Monde) auto-modelises into your live library.
-            </p>
-          </div>
+          <!-- Optional Live LLM Engine Config (Gemini 2.5 Flash / OpenAI BYOK) -->
+          <details class="bg-white rounded-2xl border border-studio-border p-3">
+            <summary class="text-[11px] font-bold text-studio-ink cursor-pointer select-none">
+              ⚙️ Live LLM 3D Engine (Optional Gemini / OpenAI BYOK)
+            </summary>
+            <div class="mt-2.5 space-y-2 text-[10.5px]">
+              <p class="text-studio-muted leading-snug">Connect your own API key (stored only in your browser) to generate arbitrary multi-part 3D CAD schemas from any creative prompt.</p>
+              <select id="ai-provider" class="w-full rounded-lg border border-studio-border bg-studio-bg px-2 py-1.5 text-[11px] font-medium">
+                <option value="local">Built-in Designer Modeliser (Free, Instant)</option>
+                <option value="gemini">Google Gemini API (gemini-2.5-flash)</option>
+                <option value="openai">OpenAI-Compatible API (gpt-4o-mini / custom)</option>
+              </select>
+              <input id="ai-api-key" type="password" placeholder="Paste API key (kept locally in localStorage)"
+                class="w-full rounded-lg border border-studio-border bg-studio-bg px-2 py-1.5 text-[11px]" />
+              <div class="grid grid-cols-2 gap-1.5">
+                <input id="ai-model" type="text" placeholder="gemini-2.5-flash"
+                  class="rounded-lg border border-studio-border bg-studio-bg px-2 py-1.5 text-[11px]" />
+                <button id="btn-ai-save" type="button" class="rounded-lg bg-studio-ink text-white font-semibold text-[11px] cursor-pointer">Save Engine</button>
+              </div>
+            </div>
+          </details>
         </section>
 
       </div>
