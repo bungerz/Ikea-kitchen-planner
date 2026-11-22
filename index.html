@@ -3,15 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>IKEA METOD — Beige Doors &amp; Countertops 3D Studio + Ray Tracing</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231E1C19'/%3E%3Crect x='6' y='6' width='20' height='20' rx='3' fill='%23B2A593'/%3E%3C/svg%3E" />
+  <title>CASSIOPÉE Ambilly T4 — Full Apartment 3D Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231E1C19'/%3E%3Crect x='6' y='6' width='20' height='20' rx='3' fill='%23C4B8AC'/%3E%3C/svg%3E" />
 
-  <!-- Scandinavian Architectural Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
-  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -26,7 +24,7 @@
               border: '#E2DDD5',
               ink: '#1E1C19',
               muted: '#666057',
-              accent: '#B2A593'
+              accent: '#8B6B4E'
             }
           }
         }
@@ -35,596 +33,467 @@
   </script>
 
   <style>
-    /* =========================================================================
-     * BULLETPROOF CROSS-DEVICE & FOLDABLE LAYOUT (Z Fold Cover + Unfolded + Desktop)
-     * Uses fixed full-viewport flexbox with 100dvh and zero sticky bottom overlays.
-     * ========================================================================= */
-    *, *::before, *::after {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
-
+    *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      height: 100dvh;
-      overflow: hidden;
-      overscroll-behavior: none;
-      background: #E8E5DF;
+      margin: 0; padding: 0; width: 100%; height: 100%; height: 100dvh;
+      overflow: hidden; overscroll-behavior: none;
+      background: #E4E0D8;
       font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      color: #1E1C19;
-      -webkit-font-smoothing: antialiased;
+      color: #1E1C19; -webkit-font-smoothing: antialiased;
     }
-
     #app {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100dvh;
-      display: flex;
-      flex-direction: column; /* Narrow cover screen (< 680px): 44% 3D top / 56% controls bottom */
-      overflow: hidden;
-      background: #E8E5DF;
+      position: fixed; inset: 0; width: 100vw; height: 100dvh;
+      display: flex; flex-direction: column; overflow: hidden; background: #E4E0D8;
     }
-
     #viewport {
-      position: relative;
-      flex: 0 0 44%;
-      min-height: 180px;
-      width: 100%;
-      min-width: 0;
-      overflow: hidden;
-      background: #E8E5DF;
+      position: relative; flex: 0 0 46%; min-height: 200px; width: 100%; min-width: 0; overflow: hidden;
     }
-
     #viewport canvas {
-      display: block;
-      width: 100% !important;
-      height: 100% !important;
-      touch-action: none;
-      cursor: grab;
-      user-select: none;
+      display: block; width: 100% !important; height: 100% !important; touch-action: none; user-select: none;
     }
-    #viewport canvas:active {
-      cursor: grabbing;
-    }
-
     #sidebar {
-      flex: 1 1 0;
-      min-height: 0;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      background: #F7F5F1;
-      border-top: 1px solid #E2DDD5;
-      z-index: 10;
+      flex: 1 1 0; min-height: 0; width: 100%; display: flex; flex-direction: column;
+      overflow: hidden; background: #F7F5F1; border-top: 1px solid #E2DDD5; z-index: 10;
     }
-
-    /* Unfolded Galaxy Z Fold, Tablets & Desktop (>= 680px): Fluid 3D left + Sidebar right */
-    @media (min-width: 680px) {
-      #app {
-        flex-direction: row;
-      }
-      #viewport {
-        flex: 1 1 0;
-        min-width: 0;
-        min-height: 0;
-        width: auto;
-        height: 100%;
-      }
+    @media (min-width: 740px) {
+      #app { flex-direction: row; }
+      #viewport { flex: 1 1 0; min-width: 0; min-height: 0; width: auto; height: 100%; }
       #sidebar {
-        flex: 0 0 clamp(300px, 36vw, 370px);
-        max-width: 44vw;
-        width: auto;
-        height: 100%;
-        min-height: 0;
-        border-top: none;
-        border-left: 1px solid #E2DDD5;
+        flex: 0 0 clamp(330px, 34vw, 410px); max-width: 44vw; height: 100%;
+        border-top: none; border-left: 1px solid #E2DDD5;
       }
     }
+    #app.sidebar-collapsed #sidebar { display: none; }
+    #app.sidebar-collapsed #viewport { flex: 1 1 100%; height: 100%; }
 
-    /* One-Tap Full 3D Mode (edge-to-edge inspection on unfolded Z Fold / desktop) */
-    #app.sidebar-collapsed #sidebar {
-      display: none !important;
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    #sidebar-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .glass-pill {
+      background: rgba(255, 255, 255, 0.90);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(30, 28, 25, 0.12);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     }
-    #app.sidebar-collapsed #viewport {
-      flex: 1 1 100% !important;
-      width: 100% !important;
-      height: 100% !important;
+    .dark-glass-pill {
+      background: rgba(26, 24, 21, 0.90);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
     }
-
-    #sidebar-header {
-      flex-shrink: 0;
-      padding: 10px 12px 9px 12px;
-      background: #FFFFFF;
-      border-bottom: 1px solid #E2DDD5;
-    }
-
-    /* Single smooth-scrolling panel — zero stuck footer, zero occlusion */
-    #sidebar-scroll {
-      flex: 1 1 0;
-      min-height: 0;
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding: 10px 12px 28px 12px;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior-y: contain;
-    }
-
-    #sidebar-scroll::-webkit-scrollbar {
-      width: 5px;
-    }
-    #sidebar-scroll::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    #sidebar-scroll::-webkit-scrollbar-thumb {
-      background: #CFC9BE;
-      border-radius: 999px;
-    }
-    #sidebar-scroll::-webkit-scrollbar-thumb:hover {
-      background: #B2A593;
-    }
-
-    /* HUD wrappers never block 3D touch/orbit gestures */
-    .hud-layer {
-      pointer-events: none;
-    }
-    .hud-interactive {
-      pointer-events: auto;
-    }
-
-    @keyframes toastPop {
-      from { opacity: 0; transform: translate(-50%, -6px); }
-      to   { opacity: 1; transform: translate(-50%, 0); }
-    }
-    .toast-anim {
-      animation: toastPop 0.2s ease-out forwards;
-    }
-
-    @keyframes rtPulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%      { opacity: 0.45; transform: scale(0.85); }
-    }
-    .rt-dot-active {
-      animation: rtPulse 1.4s ease-in-out infinite;
-    }
+    @keyframes rtPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .rt-pulse { animation: rtPulse 1.4s ease-in-out infinite; }
   </style>
 </head>
 <body>
-
-  <!-- ==================== ROOT FULL-VIEWPORT STUDIO ==================== -->
   <div id="app">
+    <!-- ==================== 3D APARTMENT VIEWPORT ==================== -->
+    <main id="viewport">
+      <div id="canvas-host" class="w-full h-full"></div>
 
-    <!-- ==================== 3D INTERACTIVE VIEWPORT ==================== -->
-    <main id="viewport" aria-label="Interactive 3D U-shaped IKEA kitchen viewport">
-      <!-- Three.js WebGL canvas gets injected here -->
-
-      <!-- Graceful WebGL Error Fallback -->
-      <div id="webgl-error" class="hidden absolute inset-0 flex items-center justify-center bg-studio-bg p-6 text-center z-50">
-        <div class="max-w-sm bg-white p-6 rounded-2xl shadow-lg border border-studio-border">
-          <h2 class="text-sm font-bold text-studio-ink mb-2">3D Renderer Unavailable</h2>
-          <p class="text-xs text-studio-muted leading-relaxed">
-            WebGL could not be initialized on this device. Please ensure hardware acceleration is enabled in your browser settings.
-          </p>
-        </div>
-      </div>
-
-      <!-- Non-Blocking WebGL Context Recovery Pill (for foldable display switches) -->
-      <div id="context-pill" class="hidden absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] z-40 hud-layer">
-        <div class="bg-white/95 text-studio-ink px-4 py-2.5 rounded-2xl shadow-lg border border-studio-border text-xs font-semibold flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse"></span>
-          <span>Restoring 3D viewport after screen fold/unfold…</span>
-        </div>
-      </div>
-
-      <!-- Ray Trace Shader Compiling Overlay Pill (non-blocking) -->
-      <div id="rt-compiling-pill" class="hidden absolute inset-0 flex items-center justify-center bg-black/15 backdrop-blur-[1px] z-30 hud-layer">
-        <div class="bg-studio-ink/95 text-white px-4 py-2.5 rounded-2xl shadow-xl border border-white/15 text-xs font-semibold flex items-center gap-2.5">
-          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
-          <span id="rt-compiling-text">Building GPU Ray Tracing BVH &amp; shaders…</span>
-        </div>
-      </div>
-
-      <!-- TOP HUD BAR: Camera Presets (Left) + Ray Trace & Full 3D (Right) -->
-      <div class="hud-layer absolute top-2.5 inset-x-2.5 z-20 flex items-start justify-between gap-2">
-        <!-- Camera Presets -->
-        <div class="hud-interactive inline-flex flex-wrap items-center gap-1 bg-white/90 backdrop-blur-md p-1 rounded-2xl border border-black/10 shadow-sm max-w-[calc(100%-170px)] sm:max-w-none">
-          <button data-cam="perspective" type="button" class="cam-btn min-h-[34px] sm:min-h-[38px] px-2.5 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer">
-            3/4 View
-          </button>
-          <button data-cam="inside" type="button" class="cam-btn min-h-[34px] sm:min-h-[38px] px-2.5 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer">
-            <span class="hidden sm:inline">Chef (Inside U)</span>
-            <span class="sm:hidden">Chef</span>
-          </button>
-          <button data-cam="topdown" type="button" class="cam-btn min-h-[34px] sm:min-h-[38px] px-2.5 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer">
-            Top Plan (U)
-          </button>
-          <button data-cam="closeup" type="button" class="cam-btn min-h-[34px] sm:min-h-[38px] px-2.5 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all cursor-pointer">
-            Edge Close-Up
-          </button>
-        </div>
-
-        <!-- Right Action Pills: On-Demand Ray Trace + Full 3D Toggle -->
-        <div class="hud-interactive flex items-center gap-1.5 shrink-0">
-          <button id="btn-toggle-rt" type="button" title="Toggle GPU Path Tracing (Realistic Ray Traced Render)" class="min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3 rounded-2xl bg-studio-ink/95 hover:bg-studio-ink text-white backdrop-blur-md border border-white/15 shadow-md text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap">
-            <span id="rt-btn-dot" class="w-2 h-2 rounded-full bg-amber-400 shrink-0"></span>
-            <span id="rt-btn-label">Ray Trace</span>
-          </button>
-          <button id="btn-toggle-sidebar" type="button" class="min-h-[36px] sm:min-h-[38px] px-2.5 sm:px-3 rounded-2xl bg-white/95 hover:bg-white backdrop-blur-md border border-black/15 shadow-md text-[11px] font-semibold text-studio-ink flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap">
-            <span id="toggle-sidebar-label">✕ Full 3D</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- BOTTOM-CENTER HUD STACK: Ray Trace Studio Bar + Thumb-Friendly Combo A/B Swap Pill -->
-      <div class="hud-layer absolute bottom-2.5 inset-x-2.5 z-20 flex flex-col items-center gap-1.5">
-
-        <!-- ON-DEMAND RAY TRACE STUDIO CONTROL BAR (Visible only when RT is active) -->
-        <div id="rt-hud" class="hidden hud-interactive w-full max-w-[540px] bg-studio-ink/95 backdrop-blur-md text-white px-2.5 py-2 rounded-2xl shadow-xl border border-white/15 space-y-1.5">
-          <!-- Row 1: Sample Progress + GPU Status + Quick Actions -->
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2 min-w-0">
-              <span id="rt-status-dot" class="w-2 h-2 rounded-full bg-amber-400 rt-dot-active shrink-0"></span>
-              <span id="rt-status-text" class="text-[11px] font-semibold truncate">Tracing · 0 / 64 spp</span>
-              <span id="rt-gpu-badge" class="hidden sm:inline-block text-[9.5px] font-mono px-1.5 py-0.5 rounded-md bg-white/10 text-white/80 truncate max-w-[140px]">GPU</span>
-            </div>
-            <div class="flex items-center gap-1 shrink-0">
-              <button id="btn-rt-denoise" type="button" title="Toggle Edge-Preserving Smart Denoiser" class="min-h-[30px] px-2 rounded-lg text-[10px] font-semibold bg-emerald-500/25 text-emerald-200 border border-emerald-400/40 hover:bg-emerald-500/35 transition-all cursor-pointer whitespace-nowrap">
-                Denoise: ON
-              </button>
-              <button id="btn-rt-pause" type="button" title="Pause or Resume Ray Tracing" class="min-h-[30px] px-2 rounded-lg text-[10px] font-semibold bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer whitespace-nowrap">
-                Pause
-              </button>
-              <button id="btn-rt-save" type="button" title="Save Path-Traced Render as PNG" class="min-h-[30px] px-2.5 rounded-lg text-[10px] font-semibold bg-amber-400 hover:bg-amber-300 text-amber-950 transition-all cursor-pointer whitespace-nowrap">
-                Save PNG
-              </button>
-            </div>
-          </div>
-
-          <!-- Progress Track -->
-          <div class="w-full h-1 rounded-full bg-white/15 overflow-hidden">
-            <div id="rt-progress-bar" class="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-150" style="width: 0%;"></div>
-          </div>
-
-          <!-- Row 2: Device Quality Profiles (Z Fold / Balanced / RTX 3070 Ultra) -->
-          <div class="flex items-center justify-between gap-1.5">
-            <div class="grid grid-cols-3 gap-1 flex-1">
-              <button data-rt-profile="mobile" type="button" class="rt-profile-btn min-h-[28px] px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer truncate">
-                Fold / Fast
-              </button>
-              <button data-rt-profile="balanced" type="button" class="rt-profile-btn min-h-[28px] px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer truncate">
-                Balanced
-              </button>
-              <button data-rt-profile="ultra" type="button" class="rt-profile-btn min-h-[28px] px-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer truncate">
-                RTX Ultra
-              </button>
-            </div>
-            <button id="btn-rt-more" type="button" title="Add +64 more samples for even cleaner convergence" class="hidden min-h-[28px] px-2 rounded-lg text-[10px] font-semibold bg-white/15 hover:bg-white/25 text-amber-200 transition-all cursor-pointer whitespace-nowrap shrink-0">
-              +64 spp
-            </button>
+      <!-- TOP-LEFT: Apartment Identity + Quick Tool Controls -->
+      <div class="absolute top-2.5 left-2.5 z-20 flex flex-wrap items-center gap-1.5 max-w-[68%]">
+        <div class="glass-pill rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-600 shrink-0"></span>
+          <div class="leading-tight">
+            <div class="text-[11px] font-bold tracking-tight text-studio-ink">CASSIOPÉE · Ambilly T4</div>
+            <div class="text-[9.5px] text-studio-muted">Lot 17 · 83.4 m² + 11.5 m² Loggia</div>
           </div>
         </div>
 
-        <!-- COMBO A/B SWAP PILL -->
-        <div id="ab-floating" class="hidden hud-interactive inline-flex items-center gap-1 bg-studio-ink/95 backdrop-blur-md text-white p-1 rounded-2xl shadow-lg border border-white/15 max-w-full">
-          <button id="btn-swap-ab" type="button" class="min-h-[40px] px-3 sm:px-3.5 rounded-xl bg-white/10 hover:bg-white/20 active:scale-[0.98] transition-all flex items-center gap-2 text-xs font-semibold cursor-pointer min-w-0">
-            <span id="ab-slot-badge" class="inline-flex items-center justify-center px-1.5 py-0.5 rounded-md bg-amber-400 text-amber-950 text-[10px] font-bold leading-none shrink-0">A</span>
-            <span id="ab-swap-label" class="truncate max-w-[195px] sm:max-w-[300px]">Swap A ↔ B</span>
-            <kbd class="hidden md:inline-block text-[10px] px-1.5 py-0.5 rounded bg-white/15 font-mono shrink-0">Space</kbd>
-          </button>
-          <button id="btn-clear-ab" type="button" title="Clear Combo A/B" aria-label="Clear Combo A/B" class="min-h-[40px] min-w-[38px] rounded-xl hover:bg-white/15 flex items-center justify-center text-white/80 hover:text-white transition-colors cursor-pointer shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
+        <button id="btn-roof" type="button" title="Toggle Ceilings (Cutaway vs Interior)"
+          class="glass-pill h-8 px-2.5 rounded-xl text-[11px] font-semibold text-studio-ink hover:bg-white transition-all cursor-pointer flex items-center gap-1">
+          <span>🏠</span><span id="lbl-roof">Cutaway</span>
+        </button>
+
+        <button id="btn-snap" type="button" title="Toggle 5 cm Grid Snap (G)"
+          class="glass-pill h-8 px-2.5 rounded-xl text-[11px] font-semibold text-studio-ink hover:bg-white transition-all cursor-pointer">
+          <span id="lbl-snap">Snap 5cm ✓</span>
+        </button>
+
+        <div class="glass-pill rounded-xl p-0.5 flex items-center gap-0.5">
+          <button id="btn-undo" type="button" title="Undo (Ctrl+Z)" class="w-7 h-7 rounded-lg text-xs hover:bg-black/5 cursor-pointer">↩</button>
+          <button id="btn-redo" type="button" title="Redo (Ctrl+Y)" class="w-7 h-7 rounded-lg text-xs hover:bg-black/5 cursor-pointer">↪</button>
         </div>
       </div>
 
-      <!-- Ephemeral Toast Pill -->
-      <div id="toast-box" class="hidden hud-layer absolute top-14 left-1/2 -translate-x-1/2 z-30 bg-studio-ink/95 backdrop-blur-md text-white text-[11px] font-medium px-3.5 py-2 rounded-2xl shadow-lg whitespace-nowrap max-w-[92%] truncate"></div>
+      <!-- TOP-RIGHT: Ray Trace + Sidebar Toggle -->
+      <div class="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+        <button id="btn-raytrace" type="button"
+          class="glass-pill h-8 px-3 rounded-xl text-[11px] font-bold text-studio-ink hover:bg-white transition-all cursor-pointer flex items-center gap-1.5">
+          <span id="rt-btn-dot" class="w-2 h-2 rounded-full bg-amber-500"></span>
+          <span id="rt-btn-label">Ray Trace</span>
+        </button>
+
+        <button id="btn-toggle-sidebar" type="button" title="Toggle Studio Panel"
+          class="glass-pill w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-studio-ink hover:bg-white cursor-pointer">
+          ☰
+        </button>
+      </div>
+
+      <!-- RAY TRACING HUD (Visible only while GPU Path Tracing is active) -->
+      <div id="rt-hud" class="hidden absolute top-12 right-2.5 z-20 dark-glass-pill text-white rounded-2xl p-2.5 w-[245px] space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5">
+            <span id="rt-status-dot" class="w-2 h-2 rounded-full bg-amber-400 rt-pulse"></span>
+            <span id="rt-status-text" class="text-[11px] font-bold">Path Tracing…</span>
+          </div>
+          <span id="rt-samples-text" class="text-[10px] font-mono text-amber-300">0 / 128</span>
+        </div>
+        <div class="w-full h-1.5 bg-white/15 rounded-full overflow-hidden">
+          <div id="rt-progress-bar" class="h-full bg-amber-400 transition-all duration-150" style="width:0%"></div>
+        </div>
+        <div class="grid grid-cols-3 gap-1">
+          <button data-rt-prof="mobile" type="button" class="rt-prof-btn py-1 rounded-lg text-[10px] font-semibold bg-white/10 hover:bg-white/20 cursor-pointer">Fast</button>
+          <button data-rt-prof="balanced" type="button" class="rt-prof-btn py-1 rounded-lg text-[10px] font-semibold bg-white/10 hover:bg-white/20 cursor-pointer">Balanced</button>
+          <button data-rt-prof="ultra" type="button" class="rt-prof-btn py-1 rounded-lg text-[10px] font-semibold bg-white/10 hover:bg-white/20 cursor-pointer">RTX Ultra</button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button id="btn-rt-denoise" type="button" class="flex-1 py-1 rounded-lg text-[10px] font-semibold bg-white/15 hover:bg-white/25 cursor-pointer">Denoise: ON</button>
+          <button id="btn-rt-save" type="button" class="flex-1 py-1 rounded-lg text-[10px] font-semibold bg-amber-400 text-amber-950 hover:bg-amber-300 cursor-pointer">Save PNG</button>
+        </div>
+      </div>
+
+      <!-- FLOATING CONTEXTUAL SELECTION BAR (Appears when dragging/selecting furniture!) -->
+      <div id="selection-hud" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 z-20 dark-glass-pill text-white rounded-2xl px-3 py-2 flex flex-wrap items-center justify-center gap-2 max-w-[94%]">
+        <div class="flex flex-col leading-tight pr-1 border-r border-white/15">
+          <span id="sel-name" class="text-[11.5px] font-bold text-amber-300 truncate max-w-[190px]">Selected Item</span>
+          <span id="sel-clearance" class="text-[9.5px] font-mono text-white/80">Drag on floor to move</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <button id="sel-rot-90" type="button" title="Rotate 90° (R)" class="px-2 py-1 rounded-lg bg-white/12 hover:bg-white/25 text-[11px] font-semibold cursor-pointer">↻ 90°</button>
+          <button id="sel-rot-15" type="button" title="Rotate 15° (Shift+R)" class="px-2 py-1 rounded-lg bg-white/12 hover:bg-white/25 text-[11px] font-semibold cursor-pointer">↻ 15°</button>
+          <button id="sel-extend" type="button" class="hidden px-2.5 py-1 rounded-lg bg-amber-400 text-amber-950 hover:bg-amber-300 text-[11px] font-bold cursor-pointer">Extend</button>
+          <button id="sel-dup" type="button" title="Duplicate Item" class="px-2 py-1 rounded-lg bg-white/12 hover:bg-white/25 text-[11px] font-semibold cursor-pointer">⧉</button>
+          <button id="sel-del" type="button" title="Delete Item (Del)" class="px-2 py-1 rounded-lg bg-red-500/80 hover:bg-red-500 text-[11px] font-semibold cursor-pointer">🗑</button>
+          <button id="sel-close" type="button" title="Deselect (Esc)" class="px-1.5 py-1 rounded-lg hover:bg-white/15 text-xs text-white/70 cursor-pointer">✕</button>
+        </div>
+      </div>
+
+      <!-- BOTTOM ROOM FOCUS NAVIGATION BAR -->
+      <div class="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex justify-center pointer-events-none">
+        <div id="room-nav" class="pointer-events-auto glass-pill rounded-2xl p-1 flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full"></div>
+      </div>
+
+      <!-- TOAST NOTIFICATION -->
+      <div id="toast" class="pointer-events-none opacity-0 transition-opacity duration-200 absolute top-14 left-1/2 -translate-x-1/2 z-30 dark-glass-pill text-white text-[11.5px] font-medium px-3.5 py-1.5 rounded-full whitespace-nowrap"></div>
     </main>
 
-    <!-- ==================== SCROLLABLE CONFIGURATOR SIDEBAR ==================== -->
+    <!-- ==================== RIGHT STUDIO CONTROL PANEL ==================== -->
     <aside id="sidebar">
-
-      <!-- Compact Fixed Header: Brand + Reset + 3 Tabs ONLY -->
-      <header id="sidebar-header">
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <div class="flex items-center gap-2 min-w-0">
-            <span id="hdr-door-dot" class="w-4 h-4 rounded-full border border-black/20 shrink-0 shadow-inner" style="background-color:#B2A593;"></span>
-            <div class="min-w-0">
-              <h1 class="text-[13px] font-bold tracking-tight text-studio-ink truncate leading-tight">IKEA METOD · U-Kitchen Studio</h1>
-              <p id="hdr-subtitle" class="text-[10px] text-studio-muted truncate leading-tight">HAVSTORP Beige (NCS S 3005-Y20R) · Gloss 10</p>
-            </div>
-          </div>
-          <button id="btn-reset-cam" type="button" title="Reset 3D Camera" aria-label="Reset 3D Camera" class="min-h-[36px] min-w-[36px] rounded-xl bg-studio-subtle hover:bg-[#E4E0D8] text-studio-ink flex items-center justify-center transition-colors cursor-pointer shrink-0">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-          </button>
+      <!-- Primary 5-Tab Bar -->
+      <div class="shrink-0 bg-white border-b border-studio-border px-2.5 pt-2.5 pb-2">
+        <div class="grid grid-cols-5 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
+          <button data-tab="furniture" type="button" class="tab-btn py-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer">Furniture</button>
+          <button data-tab="paint"     type="button" class="tab-btn py-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer">Paint</button>
+          <button data-tab="kitchen"   type="button" class="tab-btn py-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer">Kitchen</button>
+          <button data-tab="lights"    type="button" class="tab-btn py-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer">Lights</button>
+          <button data-tab="prompt"    type="button" class="tab-btn py-1.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer">✨ AI</button>
         </div>
+      </div>
 
-        <!-- 3-Tab Navigation Bar -->
-        <div class="grid grid-cols-3 gap-1 p-1 bg-studio-subtle rounded-2xl border border-studio-border">
-          <button id="tab-doors" type="button" class="min-h-[38px] px-1 rounded-xl text-[11px] sm:text-xs font-semibold transition-all cursor-pointer truncate">
-            Doors (6)
-          </button>
-          <button id="tab-countertops" type="button" class="min-h-[38px] px-1 rounded-xl text-[11px] sm:text-xs font-semibold transition-all cursor-pointer truncate">
-            Countertops (12)
-          </button>
-          <button id="tab-room" type="button" class="min-h-[38px] px-1 rounded-xl text-[11px] sm:text-xs font-semibold transition-all cursor-pointer truncate">
-            Room &amp; Style
-          </button>
-        </div>
-      </header>
+      <!-- Scrollable Tab Contents -->
+      <div id="sidebar-scroll" class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
 
-      <!-- Single Smooth-Scrolling Panel (Active Combo Bar + Tab Content) -->
-      <div id="sidebar-scroll" class="space-y-2.5">
-
-        <!-- COMPACT COLLAPSIBLE "ACTIVE COMBO & COLOR CHECK" BAR (Collapsed by Default) -->
-        <div class="bg-white rounded-2xl border border-studio-border p-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-          <div class="flex items-center justify-between gap-2">
-            <!-- Dual Swatch Preview (Door + Countertop) -->
-            <div class="flex items-center gap-2 min-w-0">
-              <div class="flex items-center -space-x-1.5 shrink-0">
-                <span id="combo-door-swatch" class="w-6 h-6 rounded-lg border-2 border-white ring-1 ring-black/15 shadow-xs block"></span>
-                <span id="combo-top-swatch" class="w-6 h-6 rounded-lg border-2 border-white ring-1 ring-black/15 shadow-xs block"></span>
-              </div>
-              <div class="min-w-0">
-                <div class="flex items-center gap-1 min-w-0">
-                  <span id="combo-door-name" class="text-[11px] font-bold text-studio-ink truncate">HAVSTORP Beige</span>
-                  <span class="text-[10px] text-studio-muted">+</span>
-                  <span id="combo-top-name" class="text-[11px] font-semibold text-studio-ink truncate">EKBACKEN Blanc</span>
-                </div>
-                <div id="combo-subline" class="text-[10px] text-studio-muted truncate">NCS S 3005-Y20R · 2.8 cm top</div>
-              </div>
-            </div>
-
-            <!-- Action Buttons: Pin Combo A + Expand Color Check -->
-            <div class="flex items-center gap-1 shrink-0">
-              <button id="btn-pin-a" type="button" class="min-h-[36px] px-2 rounded-xl text-[10.5px] font-semibold border transition-all cursor-pointer whitespace-nowrap">
-                Pin Combo A
-              </button>
-              <button id="btn-toggle-check" type="button" aria-expanded="false" class="min-h-[36px] px-2 rounded-xl text-[10.5px] font-semibold bg-studio-subtle hover:bg-[#E5E0D7] text-studio-ink transition-colors cursor-pointer whitespace-nowrap">
-                Color Check ▾
-              </button>
-            </div>
+        <!-- ========== TAB 1: FURNITURE (IKEA BEDS, IKEA SOFAS, MOBILI FIVER TABLES) ========== -->
+        <section id="panel-furniture" class="space-y-3">
+          <!-- Helpful Drag Tip Banner -->
+          <div class="bg-amber-50/90 border border-amber-200/80 rounded-xl px-2.5 py-2 text-[10.5px] text-amber-950 flex items-center justify-between gap-2">
+            <span>👆 <strong>Drag any item</strong> directly in 3D to rearrange · Press <kbd class="px-1 bg-white rounded border border-amber-300 font-mono text-[9.5px]">R</kbd> to rotate</span>
           </div>
 
-          <!-- EXPANDABLE 4-CHIP CALIBRATION STRIP & TECHNICAL SPECS -->
-          <div id="combo-drawer" class="hidden mt-2.5 pt-2.5 border-t border-studio-border space-y-2.5">
-            <!-- 4-Chip Side-by-Side Swatch Calibration Strip -->
+          <!-- 1A. MOBILI FIVER EXTENSIBLE TABLES (WALNUT DEFAULT) -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xs font-bold text-studio-ink">Mobili Fiver Extensible Table</h2>
+                <p class="text-[10px] text-studio-muted">Walnut default · Test closed vs extended clearance</p>
+              </div>
+              <button id="btn-focus-table" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-studio-subtle hover:bg-studio-border cursor-pointer">Focus</button>
+            </div>
+
+            <!-- Live Extension Slider / Step Pills -->
             <div class="bg-studio-bg rounded-xl p-2 border border-studio-border space-y-1.5">
-              <div class="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-studio-ink">
-                <span>4-Chip Contrast Calibration</span>
-                <span id="calib-delta" class="text-studio-muted font-medium normal-case">Δ 50 LRV vs White</span>
+              <div class="flex items-center justify-between text-[10.5px]">
+                <span class="font-semibold text-studio-ink">Table Extension</span>
+                <span id="table-dim-badge" class="font-mono font-bold text-studio-accent">160 × 90 cm · 4–6 guests</span>
               </div>
-              <div class="grid grid-cols-4 gap-1.5">
-                <!-- Chip 1: Pure White Wall -->
-                <div class="bg-white rounded-lg p-1.5 border border-studio-border">
-                  <div class="w-full h-7 rounded-md border border-black/15 mb-1" style="background-color:#F7F7F5;"></div>
-                  <div class="text-[9px] font-bold text-studio-ink leading-tight truncate">White Wall</div>
-                  <div class="text-[8.5px] text-studio-muted leading-tight">LRV 93%</div>
-                </div>
-                <!-- Chip 2: Active Door -->
-                <div class="bg-white rounded-lg p-1.5 border border-studio-ink/40">
-                  <div id="chip-door-color" class="w-full h-7 rounded-md border border-black/15 mb-1"></div>
-                  <div id="chip-door-ncs" class="text-[9px] font-bold text-studio-ink leading-tight truncate">S 3005-Y20R</div>
-                  <div id="chip-door-lrv" class="text-[8.5px] text-studio-muted leading-tight">LRV 43% · G10</div>
-                </div>
-                <!-- Chip 3: Active Countertop -->
-                <div class="bg-white rounded-lg p-1.5 border border-studio-ink/40">
-                  <div id="chip-top-color" class="w-full h-7 rounded-md border border-black/15 mb-1 bg-cover bg-center"></div>
-                  <div id="chip-top-name" class="text-[9px] font-bold text-studio-ink leading-tight truncate">Blanc</div>
-                  <div id="chip-top-meta" class="text-[8.5px] text-studio-muted leading-tight">2.8 cm · LRV 94%</div>
-                </div>
-                <!-- Chip 4: Active Floor -->
-                <div class="bg-white rounded-lg p-1.5 border border-studio-border">
-                  <div id="chip-floor-color" class="w-full h-7 rounded-md border border-black/15 mb-1" style="background-color:#9A9288;"></div>
-                  <div id="chip-floor-name" class="text-[9px] font-bold text-studio-ink leading-tight truncate">Taupe 60×60</div>
-                  <div id="chip-floor-meta" class="text-[8.5px] text-studio-muted leading-tight">2mm grout</div>
-                </div>
+              <div class="grid grid-cols-3 gap-1">
+                <button data-ext="0" type="button" class="ext-btn py-1.5 rounded-lg text-[10.5px] font-semibold border transition-all cursor-pointer">Closed</button>
+                <button data-ext="1" type="button" class="ext-btn py-1.5 rounded-lg text-[10.5px] font-semibold border transition-all cursor-pointer">+1 Leaf</button>
+                <button data-ext="2" type="button" class="ext-btn py-1.5 rounded-lg text-[10.5px] font-semibold border transition-all cursor-pointer">Full Ext.</button>
               </div>
             </div>
 
-            <!-- Detailed Door & Countertop Specs -->
-            <div class="grid grid-cols-1 gap-1.5 text-[11px] text-studio-muted leading-relaxed">
-              <div class="bg-studio-bg/70 rounded-xl px-2.5 py-2 border border-studio-border/80">
-                <div class="text-[10px] font-bold uppercase tracking-wider text-studio-ink mb-0.5">Selected METOD Door</div>
-                <div id="spec-door-line1" class="font-semibold text-studio-ink"></div>
-                <div id="spec-door-line2" class="text-[10.5px]"></div>
-              </div>
-              <div class="bg-studio-bg/70 rounded-xl px-2.5 py-2 border border-studio-border/80">
-                <div class="text-[10px] font-bold uppercase tracking-wider text-studio-ink mb-0.5">Selected Countertop</div>
-                <div id="spec-top-line1" class="font-semibold text-studio-ink"></div>
-                <div id="spec-top-line2" class="text-[10.5px]"></div>
+            <!-- Table Wood Finishes -->
+            <div id="table-finishes" class="flex flex-wrap gap-1.5"></div>
+
+            <!-- 6 Mobili Fiver Models -->
+            <div id="table-list" class="grid grid-cols-2 gap-1.5"></div>
+          </div>
+
+          <!-- 1B. IKEA QUEEN SIZE BEDS (160x200 ONLY) -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xs font-bold text-studio-ink">IKEA Queen Beds (160×200)</h2>
+                <p class="text-[10px] text-studio-muted">12 official IKEA Queen frames · Per bedroom</p>
               </div>
             </div>
 
-            <!-- Active Combo A/B Summary -->
-            <div id="combo-ab-banner" class="hidden text-[10.5px] font-medium text-amber-950 bg-amber-50 border border-amber-300 rounded-xl px-2.5 py-1.5 leading-snug"></div>
-          </div>
-        </div>
+            <!-- Bedroom Target Switcher -->
+            <div class="grid grid-cols-3 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
+              <button data-bed-room="ch3" type="button" class="bed-room-btn py-1.5 rounded-lg text-[10.5px] font-bold cursor-pointer">Ch. 3 Master</button>
+              <button data-bed-room="ch1" type="button" class="bed-room-btn py-1.5 rounded-lg text-[10.5px] font-bold cursor-pointer">Chambre 1</button>
+              <button data-bed-room="ch2" type="button" class="bed-room-btn py-1.5 rounded-lg text-[10.5px] font-bold cursor-pointer">Chambre 2</button>
+            </div>
 
-        <!-- ========== TAB 1: DOORS (6 BEIGE-FAMILY IKEA METOD FRONTS) ========== -->
-        <section id="panel-doors" class="space-y-2">
-          <!-- Lightest -> Darkest Scale Strip -->
-          <div class="flex items-center justify-between px-1">
-            <span class="text-[10.5px] font-semibold text-studio-muted">Lightest Warm Cream → Deepest Brown-Beige</span>
-            <span class="text-[10px] font-mono text-studio-muted">METOD System</span>
-          </div>
+            <!-- Active Bed Finish Swatches -->
+            <div id="bed-finishes" class="flex flex-wrap gap-1.5"></div>
 
-          <!-- 6 Faithful METOD Beige Door Cards -->
-          <div id="door-list" class="grid grid-cols-1 gap-2"></div>
-        </section>
-
-        <!-- ========== TAB 2: COUNTERTOPS (12 IKEA FRANCE WORKTOPS) ========== -->
-        <section id="panel-countertops" class="hidden space-y-2.5">
-          <!-- Category Filter Pills -->
-          <div class="flex flex-wrap gap-1.5">
-            <button data-cat="all" type="button" class="cat-pill min-h-[34px] px-2.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer">All (12)</button>
-            <button data-cat="dark" type="button" class="cat-pill min-h-[34px] px-2.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer">Blacks &amp; Darks</button>
-            <button data-cat="white" type="button" class="cat-pill min-h-[34px] px-2.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer">Whites &amp; Marbles</button>
-            <button data-cat="stone" type="button" class="cat-pill min-h-[34px] px-2.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer">Beige &amp; Terrazzo</button>
-            <button data-cat="wood" type="button" class="cat-pill min-h-[34px] px-2.5 rounded-xl text-[11px] font-semibold transition-all cursor-pointer">Woods</button>
+            <!-- 12 IKEA Queen Beds Grid -->
+            <div id="bed-list" class="grid grid-cols-2 gap-1.5 max-h-[260px] overflow-y-auto pr-0.5"></div>
           </div>
 
-          <!-- 2-Column Swatch Grid of all 12 Countertops -->
-          <div id="countertop-grid" class="grid grid-cols-2 gap-2"></div>
-        </section>
-
-        <!-- ========== TAB 3: ROOM & STYLE ========== -->
-        <section id="panel-room" class="hidden space-y-3">
-
-          <!-- Photorealistic On-Demand GPU Ray Tracing Studio Card -->
-          <div class="bg-studio-ink text-white p-3 rounded-2xl border border-black/15 shadow-sm space-y-2">
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-                <span class="text-[11px] font-bold uppercase tracking-wider">GPU Ray Tracing (Path Tracer)</span>
+          <!-- 1C. IKEA LIVING ROOM SOFAS -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xs font-bold text-studio-ink">IKEA Living Room Sofas</h2>
+                <p class="text-[10px] text-studio-muted">8 IKEA France series · Reversible chaise</p>
               </div>
-              <span id="sidebar-rt-gpu" class="text-[9.5px] font-mono text-white/70 truncate max-w-[130px]">WebGL2 BVH</span>
+              <button id="btn-focus-sofa" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-studio-subtle hover:bg-studio-border cursor-pointer">Focus</button>
+            </div>
+
+            <!-- Chaise Config -->
+            <div class="grid grid-cols-3 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
+              <button data-chaise="none"  type="button" class="chaise-btn py-1 rounded-lg text-[10.5px] font-semibold cursor-pointer">3-Seater</button>
+              <button data-chaise="left"  type="button" class="chaise-btn py-1 rounded-lg text-[10.5px] font-semibold cursor-pointer">Chaise Left</button>
+              <button data-chaise="right" type="button" class="chaise-btn py-1 rounded-lg text-[10.5px] font-semibold cursor-pointer">Chaise Right</button>
+            </div>
+
+            <!-- Fabric Swatches -->
+            <div id="sofa-fabrics" class="flex flex-wrap gap-1.5"></div>
+
+            <!-- 8 IKEA Sofas -->
+            <div id="sofa-list" class="grid grid-cols-2 gap-1.5"></div>
+          </div>
+
+          <!-- 1D. QUICK-ADD MORE FURNITURE -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xs font-bold text-studio-ink">Add Furniture to Room</h2>
+              <span id="add-room-badge" class="text-[10px] font-semibold text-studio-accent">→ Séjour</span>
+            </div>
+            <div id="quick-add-grid" class="grid grid-cols-2 gap-1.5"></div>
+          </div>
+        </section>
+
+        <!-- ========== TAB 2: DULUX VALENTINE WALL PAINTS ========== -->
+        <section id="panel-paint" class="hidden space-y-3">
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xs font-bold text-studio-ink">Wall Paint · Dulux Valentine</h2>
+                <p class="text-[10px] text-studio-muted">Default = Original Promoteur White (all rooms)</p>
+              </div>
+            </div>
+
+            <!-- Quick Palette Actions -->
+            <div class="grid grid-cols-2 gap-1.5">
+              <button id="btn-paint-reset-all" type="button" class="py-1.5 px-2 rounded-xl border border-studio-border bg-studio-bg hover:bg-studio-subtle text-[10.5px] font-semibold cursor-pointer">
+                ↺ All Original White
+              </button>
+              <button id="btn-paint-curated" type="button" class="py-1.5 px-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-[10.5px] font-semibold text-amber-950 cursor-pointer">
+                ✨ Try Curated Mix
+              </button>
+            </div>
+
+            <!-- Room Picker for Painting -->
+            <div>
+              <div class="text-[10px] font-bold uppercase tracking-wider text-studio-muted mb-1.5">Select Room to Paint</div>
+              <div id="paint-room-grid" class="grid grid-cols-2 gap-1.5"></div>
+            </div>
+
+            <!-- Coverage Toggle: All Walls vs Accent Wall Only -->
+            <div class="bg-studio-bg rounded-xl p-2 border border-studio-border space-y-1.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[10.5px] font-semibold text-studio-ink">Coverage in <span id="paint-active-room-lbl">Ch. 3 Master</span></span>
+              </div>
+              <div class="grid grid-cols-2 gap-1">
+                <button data-cov="all"    type="button" class="cov-btn py-1.5 rounded-lg text-[10.5px] font-semibold border cursor-pointer">All Walls</button>
+                <button data-cov="accent" type="button" class="cov-btn py-1.5 rounded-lg text-[10.5px] font-semibold border cursor-pointer">Accent Wall Only</button>
+              </div>
+              <p id="paint-room-hint" class="text-[10px] text-studio-muted leading-snug"></p>
+            </div>
+          </div>
+
+          <!-- Dulux Valentine Categorized Swatches -->
+          <div id="paint-swatch-sections" class="space-y-2.5"></div>
+        </section>
+
+        <!-- ========== TAB 3: IKEA METOD KITCHEN STUDIO ========== -->
+        <section id="panel-kitchen" class="hidden space-y-3">
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xs font-bold text-studio-ink">IKEA METOD Beige Doors (6)</h2>
+                <p class="text-[10px] text-studio-muted">Exact U-kitchen from your 20/05/2026 IKEA plans</p>
+              </div>
+              <button id="btn-focus-kitchen" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-studio-subtle hover:bg-studio-border cursor-pointer">Focus</button>
+            </div>
+            <!-- Combo A/B Compare Strip -->
+            <div class="flex items-center gap-1.5">
+              <button id="btn-pin-combo" type="button" class="flex-1 py-1.5 px-2 rounded-xl border border-studio-border text-[10.5px] font-semibold hover:bg-studio-subtle cursor-pointer">Pin Combo A</button>
+              <button id="btn-swap-combo" type="button" class="hidden flex-1 py-1.5 px-2 rounded-xl bg-studio-ink text-white text-[10.5px] font-semibold cursor-pointer">⇄ Swap A/B (Space)</button>
+            </div>
+            <div id="door-list" class="space-y-1.5"></div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
+            <h2 class="text-xs font-bold text-studio-ink">IKEA Countertops (12)</h2>
+            <div id="countertop-grid" class="grid grid-cols-2 gap-1.5"></div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
+            <h2 class="text-xs font-bold text-studio-ink">Claustra (on 120 cm Half-Wall)</h2>
+            <div class="grid grid-cols-3 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
+              <button data-cl-h="full" type="button" class="cl-h-btn py-1.5 rounded-lg text-[10.5px] font-semibold cursor-pointer">Full Ceiling</button>
+              <button data-cl-h="half" type="button" class="cl-h-btn py-1.5 rounded-lg text-[10.5px] font-semibold cursor-pointer">Half Height</button>
+              <button data-cl-h="off"  type="button" class="cl-h-btn py-1.5 rounded-lg text-[10.5px] font-semibold cursor-pointer">Off</button>
+            </div>
+            <div class="grid grid-cols-4 gap-1.5">
+              <button data-cl-f="oak"    type="button" class="cl-f-btn py-1.5 rounded-lg border text-[10px] font-semibold cursor-pointer">Oak</button>
+              <button data-cl-f="walnut" type="button" class="cl-f-btn py-1.5 rounded-lg border text-[10px] font-semibold cursor-pointer">Walnut</button>
+              <button data-cl-f="black"  type="button" class="cl-f-btn py-1.5 rounded-lg border text-[10px] font-semibold cursor-pointer">Black</button>
+              <button data-cl-f="white"  type="button" class="cl-f-btn py-1.5 rounded-lg border text-[10px] font-semibold cursor-pointer">White</button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-studio-border">
+              <div>
+                <div class="text-[10px] font-bold uppercase text-studio-muted mb-1">Backsplash</div>
+                <div class="grid grid-cols-2 gap-1">
+                  <button data-bs="white"     type="button" class="bs-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">White</button>
+                  <button data-bs="subway"    type="button" class="bs-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Subway</button>
+                  <button data-bs="matching"  type="button" class="bs-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Match Top</button>
+                  <button data-bs="warmStone" type="button" class="bs-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Stone</button>
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] font-bold uppercase text-studio-muted mb-1">Hardware</div>
+                <div class="grid grid-cols-1 gap-1">
+                  <button data-hw="black" type="button" class="hw-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Matte Black</button>
+                  <button data-hw="brass" type="button" class="hw-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Brushed Brass</button>
+                  <button data-hw="steel" type="button" class="hw-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Stainless</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========== TAB 4: TMA LIGHT FIXTURES, AMBIANCE & RAY TRACING ========== -->
+        <section id="panel-lights" class="hidden space-y-3">
+          <!-- Atmosphere Mode -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
+            <h2 class="text-xs font-bold text-studio-ink">Lighting Atmosphere</h2>
+            <div class="grid grid-cols-3 gap-1.5">
+              <button data-light="morning"  type="button" class="light-btn py-2 px-1 rounded-xl border text-center cursor-pointer">
+                <div class="text-sm">☀️</div>
+                <div class="text-[10.5px] font-semibold">Morning</div>
+              </button>
+              <button data-light="daylight" type="button" class="light-btn py-2 px-1 rounded-xl border text-center cursor-pointer">
+                <div class="text-sm">☁️</div>
+                <div class="text-[10.5px] font-semibold">Daylight D65</div>
+              </button>
+              <button data-light="evening"  type="button" class="light-btn py-2 px-1 rounded-xl border text-center cursor-pointer">
+                <div class="text-sm">🌙</div>
+                <div class="text-[10.5px] font-semibold">Evening</div>
+              </button>
+            </div>
+            <p class="text-[10px] text-studio-muted">Tip: Switch to <strong>Evening</strong> &amp; turn <strong>Ceilings ON</strong> to admire all TMA pendants and Chambre 3 sconces glowing warmly!</p>
+          </div>
+
+          <!-- Per-Room TMA Light Fixtures -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
+            <div>
+              <h2 class="text-xs font-bold text-studio-ink">TMA Light Fixtures by Room</h2>
+              <p class="text-[10px] text-studio-muted">Mapped to exact TMA DCLs &amp; Ch. 3 twin wall sconces</p>
+            </div>
+            <div id="fixture-room-list" class="space-y-2"></div>
+          </div>
+
+          <!-- GPU Ray Tracing Studio Card -->
+          <div class="bg-studio-ink text-white rounded-2xl p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-amber-300">On-Demand GPU Ray Tracing</span>
+              <span id="sidebar-rt-gpu" class="text-[9.5px] font-mono text-white/60">WebGL2 BVH</span>
             </div>
             <p class="text-[10.5px] text-white/75 leading-relaxed">
-              On-demand physically-based global illumination, soft claustra shadows, realistic VOXTORP/quartz reflections, and under-cabinet LED bounce. Tuned for both Galaxy Z Fold &amp; RTX 3070.
+              Full apartment physically-based path tracing with global illumination, natural Dulux paint bounce, and smart edge-preserving denoiser.
             </p>
-            <button id="btn-sidebar-rt" type="button" class="w-full min-h-[38px] px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2">
-              <span id="sidebar-rt-label">Render with Ray Tracing</span>
+            <button id="btn-sidebar-rt" type="button" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold cursor-pointer">
+              Render with Ray Tracing
             </button>
           </div>
 
-          <!-- Lighting Presets -->
-          <div class="bg-white p-3 rounded-2xl border border-studio-border space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-studio-muted">Lighting Atmosphere</span>
-              <span class="text-[10px] text-studio-muted">ACES Filmic · 0.94</span>
-            </div>
-            <div class="grid grid-cols-3 gap-1.5">
-              <button data-light="morning" type="button" class="opt-light min-h-[60px] flex flex-col items-center justify-center gap-1 p-2 rounded-xl border text-center transition-all cursor-pointer">
-                <span class="text-sm leading-none">☀️</span>
-                <span class="text-[10.5px] font-semibold leading-tight">Morning Sun (SE)</span>
-              </button>
-              <button data-light="daylight" type="button" class="opt-light min-h-[60px] flex flex-col items-center justify-center gap-1 p-2 rounded-xl border text-center transition-all cursor-pointer">
-                <span class="text-sm leading-none">☁️</span>
-                <span class="text-[10.5px] font-semibold leading-tight">Neutral Daylight</span>
-                <span class="text-[8.5px] text-studio-muted leading-none">D65 Color Check</span>
-              </button>
-              <button data-light="evening" type="button" class="opt-light min-h-[60px] flex flex-col items-center justify-center gap-1 p-2 rounded-xl border text-center transition-all cursor-pointer">
-                <span class="text-sm leading-none">🌙</span>
-                <span class="text-[10.5px] font-semibold leading-tight">Cozy Evening</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Right-Side Architectural Claustra -->
-          <div class="bg-white p-3 rounded-2xl border border-studio-border space-y-2.5">
-            <div class="flex items-center justify-between">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-studio-muted">Right-Side Claustra</span>
-              <span class="text-[10px] text-studio-muted">On East peninsula</span>
-            </div>
-
-            <div>
-              <div class="text-[10px] font-semibold text-studio-muted mb-1">Height</div>
-              <div class="grid grid-cols-3 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
-                <button data-cl-height="full" type="button" class="opt-cl-height min-h-[38px] rounded-lg text-[11px] font-semibold transition-all cursor-pointer">Full Ceiling</button>
-                <button data-cl-height="half" type="button" class="opt-cl-height min-h-[38px] rounded-lg text-[11px] font-semibold transition-all cursor-pointer">Half Height</button>
-                <button data-cl-height="off" type="button" class="opt-cl-height min-h-[38px] rounded-lg text-[11px] font-semibold transition-all cursor-pointer">Off</button>
-              </div>
-            </div>
-
-            <div>
-              <div class="text-[10px] font-semibold text-studio-muted mb-1">Claustra Finish</div>
-              <div class="grid grid-cols-2 gap-1.5">
-                <button data-cl-finish="oak" type="button" class="opt-cl-finish min-h-[40px] flex items-center gap-2 px-2.5 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer">
-                  <span class="w-4 h-4 rounded-full border border-black/15 shrink-0" style="background:#B58A5B;"></span>
-                  <span class="truncate">Natural Oak</span>
-                </button>
-                <button data-cl-finish="walnut" type="button" class="opt-cl-finish min-h-[40px] flex items-center gap-2 px-2.5 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer">
-                  <span class="w-4 h-4 rounded-full border border-black/15 shrink-0" style="background:#5C3D2A;"></span>
-                  <span class="truncate">Warm Walnut</span>
-                </button>
-                <button data-cl-finish="black" type="button" class="opt-cl-finish min-h-[40px] flex items-center gap-2 px-2.5 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer">
-                  <span class="w-4 h-4 rounded-full border border-black/15 shrink-0" style="background:#1F2023;"></span>
-                  <span class="truncate">Matte Black</span>
-                </button>
-                <button data-cl-finish="white" type="button" class="opt-cl-finish min-h-[40px] flex items-center gap-2 px-2.5 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer">
-                  <span class="w-4 h-4 rounded-full border border-black/15 shrink-0" style="background:#F7F7F5;"></span>
-                  <span class="truncate">Pure White</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Backsplash (Crédence) -->
-          <div class="bg-white p-3 rounded-2xl border border-studio-border space-y-2">
-            <div class="text-[11px] font-bold uppercase tracking-wider text-studio-muted">Backsplash (Crédence)</div>
+          <!-- Save / Export / Reset Apartment Layout -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
+            <h2 class="text-xs font-bold text-studio-ink">Apartment Layout Storage</h2>
+            <p class="text-[10px] text-studio-muted">Changes auto-save locally in your browser.</p>
             <div class="grid grid-cols-2 gap-1.5">
-              <button data-bs="white" type="button" class="opt-bs min-h-[40px] px-2.5 py-2 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer">Pure White Matte</button>
-              <button data-bs="subway" type="button" class="opt-bs min-h-[40px] px-2.5 py-2 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer">White Subway Tile</button>
-              <button data-bs="matching" type="button" class="opt-bs min-h-[40px] px-2.5 py-2 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer">Match Countertop</button>
-              <button data-bs="warmStone" type="button" class="opt-bs min-h-[40px] px-2.5 py-2 rounded-xl border text-xs font-medium text-left transition-all cursor-pointer">Warm Stone</button>
+              <button id="btn-export-json" type="button" class="py-1.5 rounded-xl border border-studio-border hover:bg-studio-subtle text-[10.5px] font-semibold cursor-pointer">↓ Export JSON</button>
+              <button id="btn-reset-layout" type="button" class="py-1.5 rounded-xl border border-red-200 text-red-700 hover:bg-red-50 text-[10.5px] font-semibold cursor-pointer">↺ Reset All</button>
             </div>
           </div>
-
-          <!-- Hardware & Faucet Finish -->
-          <div class="bg-white p-3 rounded-2xl border border-studio-border space-y-2">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-studio-muted">Hardware &amp; Faucet</span>
-              <span id="hw-integrated-badge" class="hidden text-[9.5px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-950 border border-amber-300 whitespace-nowrap">
-                Integrated handle
-              </span>
-            </div>
-            <p id="hw-integrated-note" class="hidden text-[10.5px] text-studio-muted leading-snug">
-              External door pulls are automatically hidden for this integrated-handle door; selection still updates the gooseneck faucet.
-            </p>
-            <div class="grid grid-cols-3 gap-1.5">
-              <button data-hw="black" type="button" class="opt-hw min-h-[42px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl border text-[11px] font-medium transition-all cursor-pointer">
-                <span class="w-4 h-4 rounded-full bg-[#1E1F22] border border-black/20"></span>
-                <span class="truncate">Matte Black</span>
-              </button>
-              <button data-hw="brass" type="button" class="opt-hw min-h-[42px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl border text-[11px] font-medium transition-all cursor-pointer">
-                <span class="w-4 h-4 rounded-full bg-[#C8A156] border border-black/20"></span>
-                <span class="truncate">Brushed Brass</span>
-              </button>
-              <button data-hw="steel" type="button" class="opt-hw min-h-[42px] flex flex-col items-center justify-center gap-1 px-2 py-2 rounded-xl border text-[11px] font-medium transition-all cursor-pointer">
-                <span class="w-4 h-4 rounded-full bg-[#C9CDD2] border border-black/20"></span>
-                <span class="truncate">Stainless</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Floor Tiles -->
-          <div class="bg-white p-3 rounded-2xl border border-studio-border space-y-2">
-            <div class="text-[11px] font-bold uppercase tracking-wider text-studio-muted">Flooring</div>
-            <div class="grid grid-cols-1 gap-1.5">
-              <button data-fl="taupe" type="button" class="opt-fl min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer">
-                <span class="flex items-center gap-2.5">
-                  <span class="w-4 h-4 rounded border border-black/15 shrink-0" style="background:#9A9288;"></span>
-                  <span>Taupe Tile 60×60</span>
-                </span>
-                <span class="text-[10px] text-studio-muted">Série Kevin · 2mm</span>
-              </button>
-              <button data-fl="oak" type="button" class="opt-fl min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer">
-                <span class="flex items-center gap-2.5">
-                  <span class="w-4 h-4 rounded border border-black/15 shrink-0" style="background:#C8AA82;"></span>
-                  <span>Natural Oak Parquet</span>
-                </span>
-              </button>
-              <button data-fl="greyStone" type="button" class="opt-fl min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer">
-                <span class="flex items-center gap-2.5">
-                  <span class="w-4 h-4 rounded border border-black/15 shrink-0" style="background:#C5C4C0;"></span>
-                  <span>Light Grey Stone</span>
-                </span>
-              </button>
-              <button data-fl="microcement" type="button" class="opt-fl min-h-[42px] flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-medium transition-all cursor-pointer">
-                <span class="flex items-center gap-2.5">
-                  <span class="w-4 h-4 rounded border border-black/15 shrink-0" style="background:#C2B9AC;"></span>
-                  <span>Warm Microcement</span>
-                </span>
-              </button>
-            </div>
-          </div>
-
         </section>
+
+        <!-- ========== TAB 5: AI PROMPT COMPONENT STUDIO (THE GRAIL — BETA!) ========== -->
+        <section id="panel-prompt" class="hidden space-y-3">
+          <div class="bg-gradient-to-br from-[#1E1C19] to-[#342E27] text-white rounded-2xl p-3.5 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold flex items-center gap-1.5">✨ Prompt Component Studio</span>
+              <span class="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">Phase 1 Live</span>
+            </div>
+            <p class="text-[10.5px] text-white/80 leading-relaxed">
+              Describe a custom piece of furniture (with dimensions &amp; material) to modelise &amp; spawn it instantly, or type a room change in English or French!
+            </p>
+            <form id="prompt-form" class="space-y-2">
+              <textarea id="prompt-input" rows="2" placeholder="e.g. Create a walnut sideboard 180x45x78 in séjour…"
+                class="w-full rounded-xl bg-white/10 border border-white/20 px-2.5 py-2 text-xs text-white placeholder-white/45 focus:outline-none focus:border-amber-400 resize-none"></textarea>
+              <button type="submit" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold cursor-pointer">
+                ✨ Generate &amp; Apply
+              </button>
+            </form>
+            <div id="prompt-feedback" class="hidden text-[10.5px] bg-white/10 rounded-xl px-2.5 py-1.5 text-amber-200"></div>
+          </div>
+
+          <!-- Try One-Click Prompt Examples -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
+            <div class="text-[10px] font-bold uppercase tracking-wider text-studio-muted">Try Example Prompts</div>
+            <div id="prompt-examples" class="flex flex-wrap gap-1.5"></div>
+          </div>
+
+          <!-- Prompted Custom Library -->
+          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <h2 class="text-xs font-bold text-studio-ink">Your Prompted Components</h2>
+              <span id="custom-lib-count" class="text-[10px] font-mono text-studio-muted">0 saved</span>
+            </div>
+            <div id="custom-lib-list" class="space-y-1.5 text-[11px] text-studio-muted">
+              No prompted components yet — generate one above!
+            </div>
+          </div>
+
+          <!-- Phase 2 Next-Task Roadmap -->
+          <div class="bg-studio-subtle/80 rounded-2xl border border-studio-border p-3 space-y-1">
+            <div class="text-[10.5px] font-bold text-studio-ink">🚀 Next Phase Roadmap (The Grail)</div>
+            <p class="text-[10px] text-studio-muted leading-relaxed">
+              The scene uses a declarative parametric schema (`customParametric`). Next task: plug in a Gemini / LLM JSON-to-3D or Tripo/Meshy GLB endpoint so any photo or URL (IKEA, Mobili Fiver, Maisons du Monde) auto-modelises into your live library.
+            </p>
+          </div>
+        </section>
+
       </div>
     </aside>
   </div>

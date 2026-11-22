@@ -262,40 +262,44 @@ export class KitchenRayTracer {
   }
 
   _buildPhysicalAreaLights() {
-    const { WALL_CAB_BOT, BACK_WALL_Z, LEFT_WALL_X, CEILING_Y } = this.constants;
     const grp = new THREE.Group();
     grp.name = 'RTPhysicalLights';
 
-    // 1. Soft Architectural Patio Window Area Light (East-Southeast, shines through Claustra!)
-    const winLight = new ShapedAreaLight(new THREE.Color('#FFF8EE'), 3.4, 2.8, 2.2);
+    // 1. Soft Architectural Loggia/West Window Area Light shining into Séjour & Kitchen
+    const winLight = new ShapedAreaLight(new THREE.Color('#FFF8EE'), 3.8, 3.6, 2.0);
     winLight.isCircular = false;
-    winLight.position.set(4.15, 1.58, 1.45);
-    winLight.lookAt(0.15, 0.92, -0.35);
+    winLight.position.set(2.8, 1.45, 8.75);
+    winLight.lookAt(3.4, 0.90, 4.8);
     grp.add(winLight);
     this._rtWindowLight = winLight;
 
-    // 2. Physical Under-Cabinet Linear LED Strip Lights (North Back Run + West Left Run)
-    const backLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 4.0, 2.65, 0.05);
+    // 2. Physical Kitchen Under-Cabinet Linear LED Strips (North Sink Run + East Cooktop Run)
+    const backLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 4.0, 1.75, 0.05);
     backLed.isCircular = false;
-    backLed.position.set(0.18, WALL_CAB_BOT - 0.018, BACK_WALL_Z + 0.16);
-    backLed.rotation.x = -Math.PI / 2; // Point straight down onto countertop & backsplash
+    backLed.position.set(3.47, 1.46, 3.30);
+    backLed.rotation.x = -Math.PI / 2;
     grp.add(backLed);
     this._rtBackLedLight = backLed;
 
-    const leftLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 4.0, 0.05, 1.32);
+    const leftLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 4.0, 0.05, 1.24);
     leftLed.isCircular = false;
-    leftLed.position.set(LEFT_WALL_X + 0.18, WALL_CAB_BOT - 0.018, -0.50);
+    leftLed.position.set(5.32, 1.46, 4.62);
     leftLed.rotation.x = -Math.PI / 2;
     grp.add(leftLed);
     this._rtLeftLedLight = leftLed;
 
-    // 3. Scandinavian Pendant Practical Circular Disc Lights (tucked inside open shades)
-    const drop = 0.72;
-    [-0.35, 0.55].forEach(pz => {
-      const pDisc = new ShapedAreaLight(new THREE.Color('#FFCC85'), 8.0, 0.11, 0.11);
+    // 3. Apartment Practical Ceiling Light Discs (Séjour Dining, Lounge, Ch3, Ch1, Ch2)
+    [
+      [1.55, 1.60, 6.40],
+      [3.85, 1.95, 7.05],
+      [2.62, 1.95, 1.64],
+      [9.71, 1.95, 8.85],
+      [6.90, 1.95, 8.85]
+    ].forEach(([px, py, pz]) => {
+      const pDisc = new ShapedAreaLight(new THREE.Color('#FFCC85'), 8.0, 0.22, 0.22);
       pDisc.isCircular = true;
-      pDisc.position.set(1.16, CEILING_Y - drop - 0.115, pz);
-      pDisc.rotation.x = -Math.PI / 2; // Downward cone inside pendant shade
+      pDisc.position.set(px, py, pz);
+      pDisc.rotation.x = -Math.PI / 2;
       grp.add(pDisc);
       this._rtPendantLights.push(pDisc);
     });
