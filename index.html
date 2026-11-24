@@ -429,9 +429,10 @@
           <input id="rt-ev-slider" type="range" min="-1.2" max="1.2" step="0.1" value="0" class="w-full accent-amber-400 cursor-pointer" />
         </div>
         <div class="grid grid-cols-2 gap-1.5">
-          <button id="btn-rt-denoise" type="button" class="py-1 rounded-lg text-[10px] font-semibold bg-white/15 hover:bg-white/25 cursor-pointer">Denoise: Subtle</button>
+          <button id="btn-rt-denoise" type="button" title="AI denoise (Intel Open Image Denoise) once samples converge" class="py-1 rounded-lg text-[10px] font-semibold bg-white/15 hover:bg-white/25 cursor-pointer">Denoise: AI</button>
           <button id="btn-rt-lamps"   type="button" class="py-1 rounded-lg text-[10px] font-semibold bg-white/15 hover:bg-white/25 cursor-pointer">Lamps: Auto</button>
         </div>
+        <button id="btn-rt-photo" type="button" class="w-full py-1.5 rounded-lg text-[10.5px] font-bold bg-amber-400 text-amber-950 hover:bg-amber-300 cursor-pointer disabled:opacity-60">📸 Render &amp; Save Photo</button>
         <div class="flex items-center justify-between text-[9.5px] font-mono text-white/55">
           <span>GPU Engine</span>
           <span id="sidebar-rt-gpu">WebGL2 BVH</span>

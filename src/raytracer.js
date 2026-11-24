@@ -19,28 +19,32 @@ import {
  *    Interior Lamps (Auto/On/Off) without resetting converged renders!
  * ========================================================================= */
 
+// Every profile renders 1 full sample per frame (tiles 1x1) and stops early:
+// the AI denoiser (src/core/denoise.js) turns a few dozen samples into a clean image.
 export const RT_PROFILES = {
   fast: {
     key: 'fast',
     label: 'Fast Preview',
-    renderScale: 0.72,
-    tiles: [2, 2],
-    bounces: 5,
-    targetSamples: 96,
+    renderScale: 0.6,
+    tiles: [1, 1],
+    bounces: 4,
+    targetSamples: 32,
     textureSize: 512,
-    filterGlossyFactor: 0.28,
-    maxDpr: 1.25
+    filterGlossyFactor: 0.4,
+    maxDpr: 1.0,
+    denoiseQuality: 'fast'
   },
   balanced: {
     key: 'balanced',
     label: 'Balanced',
-    renderScale: 0.86,
-    tiles: [2, 1],
+    renderScale: 1.0,
+    tiles: [1, 1],
     bounces: 6,
-    targetSamples: 192,
+    targetSamples: 96,
     textureSize: 1024,
-    filterGlossyFactor: 0.20,
-    maxDpr: 1.5
+    filterGlossyFactor: 0.25,
+    maxDpr: 1.25,
+    denoiseQuality: 'balanced'
   },
   photo: {
     key: 'photo',
@@ -48,10 +52,11 @@ export const RT_PROFILES = {
     renderScale: 1.0,
     tiles: [1, 1],
     bounces: 8,
-    targetSamples: 384,
+    targetSamples: 256,
     textureSize: 1024,
-    filterGlossyFactor: 0.14,
-    maxDpr: 1.75
+    filterGlossyFactor: 0.15,
+    maxDpr: 2.0,
+    denoiseQuality: 'balanced'
   }
 };
 
@@ -323,14 +328,14 @@ function buildAmbillyHdrEnv(sunData, d65Override = false) {
       b = THREE.MathUtils.lerp(b, 0.46 * bounceScale, gd);
     }
 
-    // Physically-proportioned solar halo + bright HDR sun disc (creates warm sun shafts!)
+    // Soft aureole only. The sun itself is the scene's DirectionalLight, which the
+    // path tracer samples directly: baking a bright disc here too counted the sun
+    // twice and produced fireflies.
     const sunDot = Math.max(0, dir.dot(sunDir));
-    const halo = Math.pow(sunDot, 14.0) * 1.2 + Math.pow(sunDot, 96.0) * 5.0;
-    // Soft ~1.6° solar disc for crisp-yet-natural architectural sun shadows without harsh fireflies
-    const disc = THREE.MathUtils.smoothstep(sunDot, 0.9990, 0.9997) * (isTwilight ? 10.0 : 28.0);
-    r += sunCol.r * (halo + disc);
-    g += sunCol.g * (halo + disc);
-    b += sunCol.b * (halo + disc);
+    const halo = Math.pow(sunDot, 12.0) * (isTwilight ? 0.35 : 0.6);
+    r += sunCol.r * halo;
+    g += sunCol.g * halo;
+    b += sunCol.b * halo;
 
     color.setRGB(r, g, b);
   };
@@ -353,7 +358,7 @@ export class KitchenRayTracer {
 
     this.active = false;
     this.paused = false;
-    this.denoiseMode = 'subtle'; // 'off' | 'subtle' | 'smooth'
+    this.denoiseMode = 'ai';     // 'ai' (OIDN once converged) | 'off'
     this.exposureEv = 0.0;       // -1.2 .. +1.2 EV live trim without resetting samples!
     this.lampsMode = 'auto';     // 'auto' | 'on' | 'off'
     this.initialized = false;
@@ -381,6 +386,15 @@ export class KitchenRayTracer {
 
     this._pathTracer = null;
     this._displayQuad = null;
+
+    // AI denoise state: a generation counter invalidates in-flight results whenever
+    // the accumulation resets (camera, geometry, light or profile change).
+    this._generation = 0;
+    this._denoisedTex = null;
+    this._denoiseGen = -1;
+    this.denoiseState = 'idle'; // 'idle' | 'running' | 'done' | 'failed'
+    this.denoiseError = null;
+    this._photoRequest = null;  // { resolve, reject } while a "Render photo" is in progress
 
     // Samples/sec telemetry
     this._rateStartTs = 0;
@@ -410,25 +424,20 @@ export class KitchenRayTracer {
 
       const samples = this._pathTracer.samples;
       const dMat = this._displayQuad.material;
-      dMat.uniforms.map.value = target.texture;
+      const showDenoised = this.denoiseMode === 'ai' && this._denoisedTex && this._denoiseGen === this._generation;
+      dMat.uniforms.map.value = showDenoised ? this._denoisedTex : target.texture;
       dMat.uniforms.opacity.value = quad.material.opacity;
       dMat.uniforms.exposureMult.value = Math.pow(2.0, this.exposureEv);
       dMat.blending = quad.material.opacity < 1 ? THREE.NormalBlending : THREE.NoBlending;
 
-      // Adaptive sharpness-preserving denoise tapering cleanly as samples converge!
-      if (this.denoiseMode === 'off' || samples < 2) {
+      // While accumulating, a light edge-stopping blur makes the preview readable.
+      // The final image comes from the AI denoiser (or raw samples with denoise off).
+      if (showDenoised || this.denoiseMode === 'off' || samples < 2) {
         dMat.uniforms.denoiseStrength.value = 0.0;
-      } else if (this.denoiseMode === 'subtle') {
-        const taper = samples < 24 ? 0.72 : samples < 80 ? 0.50 : samples < 180 ? 0.30 : 0.14;
-        dMat.uniforms.denoiseStrength.value = taper;
-        dMat.uniforms.colorSigma.value = samples < 40 ? 0.22 : 0.13;
-        dMat.uniforms.stepSize.value = samples < 30 ? 2.0 : 1.0;
       } else {
-        // 'smooth'
-        const taper = samples < 30 ? 0.92 : samples < 100 ? 0.74 : samples < 200 ? 0.52 : 0.32;
-        dMat.uniforms.denoiseStrength.value = taper;
-        dMat.uniforms.colorSigma.value = samples < 40 ? 0.30 : 0.19;
-        dMat.uniforms.stepSize.value = samples < 50 ? 2.0 : 1.0;
+        dMat.uniforms.denoiseStrength.value = samples < 16 ? 0.8 : 0.55;
+        dMat.uniforms.colorSigma.value = samples < 16 ? 0.26 : 0.16;
+        dMat.uniforms.stepSize.value = samples < 8 ? 2.0 : 1.0;
       }
 
       this._displayQuad.render(renderer);
@@ -534,7 +543,8 @@ export class KitchenRayTracer {
       sunLight.visible = true;
       if (sunData) {
         sunLight.color.copy(sunData.sunColor);
-        sunLight.intensity = Math.max(2.6, sunData.sunIntensity * 2.5);
+        // Direct sun ~4x the sky's contribution, close to a real clear day.
+        sunLight.intensity = sunData.sunIntensity * 4.0;
         sunLight.position.set(
           5.6 + sunData.dir.x * 24,
           Math.max(2.4, sunData.dir.y * 24),
@@ -597,13 +607,100 @@ export class KitchenRayTracer {
   }
 
   _resetRateMeter() {
+    // Every caller of this is resetting the accumulation: any denoised image is now stale.
+    this._generation++;
+    this.denoiseState = 'idle';
     this._rateStartTs = performance.now();
     this._rateStartSamples = 0;
     this.samplesPerSec = 0;
   }
 
   getMaxDpr() {
+    if (this._photoDpr) return this._photoDpr;
     return (RT_PROFILES[this.profileKey] || RT_PROFILES.balanced).maxDpr;
+  }
+
+  _startDenoise() {
+    if (this.denoiseMode !== 'ai' || !this._pathTracer) return;
+    if (this.denoiseState === 'running' || (this.denoiseState === 'done' && this._denoiseGen === this._generation)) return;
+    const gen = this._generation;
+    const quality = (RT_PROFILES[this.profileKey] || RT_PROFILES.balanced).denoiseQuality;
+    this.denoiseState = 'running';
+    this.denoiseError = null;
+    const t0 = performance.now();
+    import('./core/denoise.js')
+      .then(mod => mod.denoisePathTrace({
+        renderer: this.renderer,
+        scene: this.scene,
+        camera: this.camera,
+        colorTarget: this._pathTracer.target,
+        quality
+      }))
+      .then(tex => {
+        if (gen !== this._generation || !this.active) {
+          tex.dispose();
+          // A newer accumulation started meanwhile; let it denoise when it converges.
+          if (this.denoiseState === 'running') this.denoiseState = 'idle';
+          if (this.active && this.paused) this._startDenoise();
+          return;
+        }
+        if (this._denoisedTex) this._denoisedTex.dispose();
+        this._denoisedTex = tex;
+        this._denoiseGen = gen;
+        this.denoiseState = 'done';
+        this.denoiseMs = Math.round(performance.now() - t0);
+        // Draw the clean image now (paused, so this only redraws the display),
+        // so a photo capture right after sees it.
+        this._pathTracer.renderSample();
+        this.hudDirty = true;
+        this._finishPhoto(null);
+      })
+      .catch(err => {
+        console.error('AI denoise failed, showing raw samples:', err);
+        this.denoiseState = 'failed';
+        this.denoiseError = err?.message || String(err);
+        this.hudDirty = true;
+        if (gen === this._generation) this._finishPhoto(null);
+      });
+  }
+
+  /**
+   * Renders a high-resolution, AI-denoised still of the current view.
+   * Resolves once the final image is on the canvas (ready for toDataURL).
+   */
+  renderPhoto({ longSide } = {}) {
+    if (!this.active) return Promise.reject(new Error('Path tracing is not active'));
+    if (this._photoRequest) return this._photoRequest.promise;
+    const canvas = this.renderer.domElement;
+    const cssLong = Math.max(canvas.clientWidth, canvas.clientHeight, 1);
+    const target = longSide || (this.profileKey === 'fast' ? 1280 : 1920);
+    this._photoDpr = Math.max(0.5, Math.min(3, target / cssLong));
+    this._pathTracer.renderScale = 1.0;
+    this.renderer.setPixelRatio(this._photoDpr);
+    this._pathTracer.updateCamera();
+    this.paused = false;
+    this._pathTracer.pausePathTracing = false;
+    this._resetRateMeter();
+
+    let resolve, reject;
+    const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+    this._photoRequest = { promise, resolve, reject };
+    return promise;
+  }
+
+  _finishPhoto(err) {
+    const req = this._photoRequest;
+    if (!req) return;
+    this._photoRequest = null;
+    if (err) req.reject(err); else req.resolve();
+  }
+
+  /** Call after the photo has been saved to go back to the interactive resolution. */
+  endPhoto() {
+    if (!this._photoDpr) return;
+    this._photoDpr = null;
+    this._applyProfileSettings(this.profileKey, false);
+    if (this.active) this.notifyResize();
   }
 
   async enable({ sunData, d65Override = false } = {}, onStatus) {
@@ -654,6 +751,9 @@ export class KitchenRayTracer {
 
   disable() {
     if (!this.active) return;
+    this._finishPhoto(new Error('Path tracing stopped'));
+    this._photoDpr = null;
+    this._generation++;
     this.active = false;
     this.paused = false;
 
@@ -692,7 +792,8 @@ export class KitchenRayTracer {
   }
 
   setDenoiseMode(mode) {
-    this.denoiseMode = ['off', 'subtle', 'smooth'].includes(mode) ? mode : 'subtle';
+    this.denoiseMode = mode === 'off' ? 'off' : 'ai';
+    if (this.denoiseMode === 'ai' && this.paused) this._startDenoise();
     this.redrawDisplayOnly();
   }
 
@@ -759,6 +860,7 @@ export class KitchenRayTracer {
 
   notifyResize() {
     if (!this.active || !this._pathTracer) return;
+    this._resetRateMeter();
     const safeDpr = Math.min(window.devicePixelRatio || 1, this.getMaxDpr());
     this.renderer.setPixelRatio(safeDpr);
     this._pathTracer.updateCamera();
@@ -770,6 +872,7 @@ export class KitchenRayTracer {
 
   renderFrame() {
     if (!this.active || !this._pathTracer) return null;
+    this.hudDirty = false;
 
     if (this.needsRebuild) {
       this.needsRebuild = false;
@@ -797,6 +900,8 @@ export class KitchenRayTracer {
     if (!this.paused && this._pathTracer.samples >= this.targetSamples) {
       this.paused = true;
       this._pathTracer.pausePathTracing = true;
+      if (this.denoiseMode === 'ai') this._startDenoise();
+      else this._finishPhoto(null);
     }
 
     this._pathTracer.renderSample();
@@ -813,7 +918,10 @@ export class KitchenRayTracer {
       samplesPerSec: this.samplesPerSec,
       isCompiling: Boolean(this._pathTracer.isCompiling),
       converged: curSamples >= this.targetSamples,
-      paused: this.paused
+      paused: this.paused,
+      denoiseState: this.denoiseMode === 'ai' ? this.denoiseState : 'off',
+      denoiseMs: this.denoiseMs || 0,
+      photo: Boolean(this._photoRequest)
     };
   }
 }
