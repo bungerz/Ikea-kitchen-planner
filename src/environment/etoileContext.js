@@ -52,6 +52,7 @@ function buildSchematicResidence({
   timberUpper = false,
   deepLoggias = false,
   pvPanels = false,
+  skipEastWindows = false,
   hideInRT = true
 }) {
   const g = new THREE.Group();
@@ -114,9 +115,10 @@ function buildSchematicResidence({
     const winH = deepLoggias ? 1.95 : 1.55;
     const winD = deepLoggias ? 0.24 : 0.08;
 
+    const zSides = skipEastWindows ? [-1] : [1, -1];
     const totalXWins = colsX * upperFloors * 2;
     const xInst = new THREE.InstancedMesh(new THREE.BoxGeometry(winW, winH, winD), glassMat, totalXWins);
-    const totalZWins = colsZ * upperFloors * 2;
+    const totalZWins = colsZ * upperFloors * zSides.length;
     const zInst = new THREE.InstancedMesh(new THREE.BoxGeometry(winD, winH, winW), glassMat, totalZWins);
 
     const dummy = new THREE.Object3D();
@@ -135,8 +137,8 @@ function buildSchematicResidence({
       }
       for (let c = 0; c < colsZ; c++) {
         const cz = -d / 2 + ((c + 0.5) * d) / colsZ;
-        // East (+X) and West (-X)
-        for (const sign of [1, -1]) {
+        // East (+X) and/or West (-X)
+        for (const sign of zSides) {
           dummy.position.set(sign * (w / 2 + 0.02), cy, cz);
           dummy.updateMatrix();
           zInst.setMatrixAt(zi++, dummy.matrix);
@@ -226,8 +228,8 @@ export function buildEtoileContext(groundY) {
   /* =====================================================================
    * SHARED PROCEDURAL ARCHITECTURAL MATERIALS (MUTED MAQUETTE PALETTE)
    * ===================================================================== */
-  const smoothConcTex = getExteriorConcreteTextures('smooth', 3, 3);
-  const roughConcTex = getExteriorConcreteTextures('rough', 3, 3);
+  const smoothConcTex = getExteriorConcreteTextures('smooth', 3, 1);
+  const roughConcTex = getExteriorConcreteTextures('rough', 3, 2);
   const paverTex = getCourtyardPaverTexture(10, 8);
   const asphaltTex = getGroundSurfaceTexture('asphalt', 12, 12);
   const voieVerteTex = getGroundSurfaceTexture('voieVerte', 18, 2);
@@ -295,35 +297,43 @@ export function buildEtoileContext(groundY) {
   const streetsGroup = new THREE.Group();
   streetsGroup.name = 'streets-etoile';
 
-  // Avenue Marguerite Yourcenar (WSW-ENE directly south of Cassiopée, Z = 16.2..23.8)
-  const avRoad = new THREE.Mesh(new THREE.BoxGeometry(260, 0.07, 7.6), asphaltMat);
-  avRoad.position.set(10, groundY + 0.035, 20.0);
+  // Avenue Marguerite Yourcenar (WSW-ENE directly south of Cassiopée & DiverCity, Z = 16.2..23.8)
+  const avRoad = new THREE.Mesh(new THREE.BoxGeometry(280, 0.07, 7.6), asphaltMat);
+  avRoad.position.set(0, groundY + 0.035, 20.0);
   avRoad.receiveShadow = true;
-  // North sidewalk split cleanly at Rue de la Fraternité (X = -13.6..-6.4)
+  // North sidewalk split cleanly at Rue de la Fraternité (X = -33.6..-26.4)
   const avSidewalkNW = new THREE.Mesh(new THREE.BoxGeometry(106.4, 0.11, 4.4), sidewalkMat);
-  avSidewalkNW.position.set(-66.8, groundY + 0.055, 13.8);
-  const avSidewalkNE = new THREE.Mesh(new THREE.BoxGeometry(146.4, 0.11, 4.4), sidewalkMat);
-  avSidewalkNE.position.set(66.8, groundY + 0.055, 13.8);
+  avSidewalkNW.position.set(-86.8, groundY + 0.055, 13.8);
+  const avSidewalkNE = new THREE.Mesh(new THREE.BoxGeometry(166.4, 0.11, 4.4), sidewalkMat);
+  avSidewalkNE.position.set(56.8, groundY + 0.055, 13.8);
   avSidewalkNE.receiveShadow = true;
   // South promenade sidewalk bordering Jardin Ferroviaire (continuous pedestrian promenade)
-  const avSidewalkS = new THREE.Mesh(new THREE.BoxGeometry(260, 0.11, 3.2), sidewalkMat);
-  avSidewalkS.position.set(10, groundY + 0.055, 25.4);
+  const avSidewalkS = new THREE.Mesh(new THREE.BoxGeometry(280, 0.11, 3.2), sidewalkMat);
+  avSidewalkS.position.set(0, groundY + 0.055, 25.4);
   // Vegetated stormwater swale (noue végétalisée) along Av. Marguerite Yourcenar
-  const avSwale = new THREE.Mesh(new THREE.BoxGeometry(240, 0.08, 1.8), swaleMat);
-  avSwale.position.set(10, groundY + 0.04, 27.9);
+  const avSwale = new THREE.Mesh(new THREE.BoxGeometry(260, 0.08, 1.8), swaleMat);
+  avSwale.position.set(0, groundY + 0.04, 27.9);
   streetsGroup.add(avRoad, avSidewalkNW, avSidewalkNE, avSidewalkS, avSwale);
 
-  // Rue de la Fraternité (NNE-SSW along West side of Cassiopée & DiverCity, X = -13.6..-6.4)
+  // Landscaped pedestrian venelle & shared Îlot B3 access lane between Cassiopée (X=0) & DiverCity (X=-11.5)
+  const venellePath = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.11, 32.0), sidewalkMat);
+  venellePath.position.set(-5.6, groundY + 0.055, -2.5);
+  venellePath.receiveShadow = true;
+  const venelleCycle = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.09, 28.0), cycleLaneMat);
+  venelleCycle.position.set(-2.5, groundY + 0.045, -1.5);
+  streetsGroup.add(venellePath, venelleCycle);
+
+  // Rue de la Fraternité (NNE-SSW along West side of DiverCity / Îlot B3, X = -33.6..-26.4)
   const fratRoad = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.07, 162), asphaltMat);
-  fratRoad.position.set(-10.0, groundY + 0.035, -54.0);
+  fratRoad.position.set(-30.0, groundY + 0.035, -54.0);
   fratRoad.receiveShadow = true;
-  const fratSidewalkEN = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.11, 146), sidewalkMat);
-  fratSidewalkEN.position.set(-4.3, groundY + 0.055, -61.2);
+  const fratSidewalkEN = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.11, 146), sidewalkMat);
+  fratSidewalkEN.position.set(-25.1, groundY + 0.055, -61.2);
   fratSidewalkEN.receiveShadow = true;
   const fratSidewalkWN = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.11, 146), sidewalkMat);
-  fratSidewalkWN.position.set(-15.5, groundY + 0.055, -61.2);
-  const fratCycle = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.085, 146), cycleLaneMat);
-  fratCycle.position.set(-5.6, groundY + 0.042, -61.2);
+  fratSidewalkWN.position.set(-35.5, groundY + 0.055, -61.2);
+  const fratCycle = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.085, 146), cycleLaneMat);
+  fratCycle.position.set(-26.1, groundY + 0.042, -61.2);
   streetsGroup.add(fratRoad, fratSidewalkEN, fratSidewalkWN, fratCycle);
 
   // Crisp schematic pedestrian crosswalk stripes (passages piétons) at Fraternité × Yourcenar
@@ -331,18 +341,18 @@ export function buildEtoileContext(groundY) {
   for (let s = 0; s < 5; s++) {
     // North crosswalk across Rue de la Fraternité
     const stN = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.085, 2.2), crosswalkMat);
-    stN.position.set(-12.4 + s * 1.2, groundY + 0.043, 14.5);
+    stN.position.set(-32.4 + s * 1.2, groundY + 0.043, 14.5);
     // East crosswalk across Av. Marguerite Yourcenar
     const stE = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.085, 0.55), crosswalkMat);
-    stE.position.set(-4.8, groundY + 0.043, 17.6 + s * 1.2);
+    stE.position.set(-24.8, groundY + 0.043, 17.6 + s * 1.2);
     streetsGroup.add(stN, stE);
   }
 
   // Rue du Jura (East flank of Îlot B3 / North collector street)
   const juraRoad = new THREE.Mesh(new THREE.BoxGeometry(7.4, 0.06, 152), asphaltMat);
   juraRoad.position.set(62.5, groundY + 0.03, -60.0);
-  const nordRue = new THREE.Mesh(new THREE.BoxGeometry(170, 0.06, 7.0), asphaltMat);
-  nordRue.position.set(-10.0, groundY + 0.03, -55.5);
+  const nordRue = new THREE.Mesh(new THREE.BoxGeometry(190, 0.06, 7.0), asphaltMat);
+  nordRue.position.set(-20.0, groundY + 0.03, -55.5);
   streetsGroup.add(juraRoad, nordRue);
 
   markHideInRT(streetsGroup);
@@ -428,20 +438,23 @@ export function buildEtoileContext(groundY) {
     courtyardGroup.add(bench);
   });
 
+  markHideInRT(courtyardGroup);
   ctxGroup.add(courtyardGroup);
 
   // 2B. DiverCity (Lot B3.1 — Comte & Vollenweider Architectes / Bouygues Immobilier)
-  // NW edge of Îlot B3 opening onto Place Rosa Parks & Rue de la Fraternité,
-  // monolithic pale concrete carved by deep loggias + stepped communal rooftop terrace!
+  // Directly adjacent to Cassiopée on the West / Chambre 3 side (7–9 Av. Marguerite Yourcenar):
+  // monolithic pale concrete carved by deep loggias with warm timber accents, clearly visible
+  // from Chambre 3's master bedroom window (in both Realtime PBR and GPU Path Tracing!),
+  // plus a connected North wing with DiverCity's communal planted rooftop terrace!
   const diverCityGroup = new THREE.Group();
   diverCityGroup.name = 'divercity-b31';
 
   const dcMain = buildSchematicResidence({
-    name: 'divercity-west-bar',
-    x: 5.5,
-    z: -33.5,
+    name: 'divercity-ch3-wing',
+    x: -18.0,
+    z: -5.5,
     w: 13.0,
-    d: 25.0,
+    d: 22.0,
     floors: 6,
     groundY,
     facadeMat: paleConcreteMat,
@@ -451,14 +464,31 @@ export function buildEtoileContext(groundY) {
     roofMat: roofGreenMat,
     activeGround: true,
     deepLoggias: true,
-    hideInRT: true
+    skipEastWindows: true,
+    hideInRT: false
   });
+  // Architectural carved loggia balconies & warm timber accents on DiverCity's East face (X = -11.5, facing Chambre 3!)
+  for (let fl = 1; fl < 6; fl++) {
+    const flY = groundY + 3.4 + (fl - 1) * 2.85;
+    for (const lz of [-12.2, -5.5, 1.2]) {
+      const logSlab = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.18, 4.3), trimConcreteMat);
+      logSlab.position.set(-11.05, flY + 0.08, lz);
+      const logRail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.96, 4.25), darkRailMat);
+      logRail.position.set(-10.56, flY + 0.62, lz);
+      const logWood = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.38, 3.85), woodAccentMat);
+      logWood.position.set(-11.42, flY + 1.38, lz);
+      const logGlass = new THREE.Mesh(new THREE.BoxGeometry(0.10, 2.08, 3.35), neighborGlassMat);
+      logGlass.position.set(-11.34, flY + 1.38, lz);
+      diverCityGroup.add(logSlab, logRail, logWood, logGlass);
+    }
+  }
+
   const dcNorthWing = buildSchematicResidence({
     name: 'divercity-north-wing',
-    x: 20.5,
-    z: -41.5,
-    w: 17.5,
-    d: 11.5,
+    x: -1.5,
+    z: -31.0,
+    w: 22.0,
+    d: 12.0,
     floors: 5,
     groundY,
     facadeMat: paleConcreteMat,
@@ -473,28 +503,30 @@ export function buildEtoileContext(groundY) {
   diverCityGroup.add(dcMain.group, dcNorthWing.group);
 
   // DiverCity's signature communal planted rooftop terrace with pergola & planter boxes on R+5 wing
+  const dcTerraceGroup = new THREE.Group();
   const dcTerraceY = groundY + dcNorthWing.totalH + 0.35;
-  const dcDeck = new THREE.Mesh(new THREE.BoxGeometry(14.5, 0.14, 8.8), woodAccentMat);
-  dcDeck.position.set(20.5, dcTerraceY, -41.5);
-  diverCityGroup.add(dcDeck);
+  const dcDeck = new THREE.Mesh(new THREE.BoxGeometry(17.5, 0.14, 9.0), woodAccentMat);
+  dcDeck.position.set(-1.5, dcTerraceY, -31.0);
+  dcTerraceGroup.add(dcDeck);
   for (let p = 0; p < 4; p++) {
     const beam = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 4.4), woodAccentMat);
-    beam.position.set(16.5 + p * 1.4, dcTerraceY + 2.4, -41.5);
-    diverCityGroup.add(beam);
+    beam.position.set(-5.8 + p * 1.4, dcTerraceY + 2.4, -31.0);
+    dcTerraceGroup.add(beam);
   }
-  for (const [px, pz] of [[16.5, -43.6], [20.7, -43.6], [16.5, -39.4], [20.7, -39.4]]) {
+  for (const [px, pz] of [[-5.8, -33.1], [-1.6, -33.1], [-5.8, -28.9], [-1.6, -28.9]]) {
     const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 2.4, 0.14), darkRailMat);
     post.position.set(px, dcTerraceY + 1.2, pz);
-    diverCityGroup.add(post);
+    dcTerraceGroup.add(post);
   }
   for (let b = 0; b < 3; b++) {
     const planter = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.65, 1.1), woodAccentMat);
-    planter.position.set(24.5, dcTerraceY + 0.35, -43.6 + b * 2.1);
+    planter.position.set(3.2, dcTerraceY + 0.35, -33.1 + b * 2.1);
     const bush = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.45, 0.9), roofGreenMat);
-    bush.position.set(24.5, dcTerraceY + 0.78, -43.6 + b * 2.1);
-    diverCityGroup.add(planter, bush);
+    bush.position.set(3.2, dcTerraceY + 0.78, -33.1 + b * 2.1);
+    dcTerraceGroup.add(planter, bush);
   }
-  markHideInRT(diverCityGroup);
+  markHideInRT(dcTerraceGroup);
+  diverCityGroup.add(dcTerraceGroup);
   ctxGroup.add(diverCityGroup);
 
   // 2C. Andromède (Lot B3.3 — Atelier Stéphane Fernandez / SA Mont-Blanc, 1 Rue du Jura)
@@ -565,10 +597,10 @@ export function buildEtoileContext(groundY) {
   plazaGroup.name = 'place-rosa-parks';
 
   const plazaSlab = new THREE.Mesh(
-    new THREE.BoxGeometry(48, 0.14, 46),
+    new THREE.BoxGeometry(44, 0.14, 44),
     new THREE.MeshStandardMaterial({ color: '#DCD6CA', roughness: 0.86 })
   );
-  plazaSlab.position.set(-42.5, groundY + 0.07, -30.5);
+  plazaSlab.position.set(-59.0, groundY + 0.07, -30.5);
   plazaSlab.receiveShadow = true;
   plazaGroup.add(plazaSlab);
 
@@ -577,11 +609,11 @@ export function buildEtoileContext(groundY) {
     new THREE.BoxGeometry(10.5, 0.16, 7.5),
     new THREE.MeshStandardMaterial({ color: '#B4BCC2', roughness: 0.35, metalness: 0.15 })
   );
-  fountainPlate.position.set(-41.5, groundY + 0.08, -30.5);
+  fountainPlate.position.set(-58.0, groundY + 0.08, -30.5);
   plazaGroup.add(fountainPlate);
 
   // Subtle architectural shade canopies (marquises) on café/QG de l'Étoile terraces
-  for (const [mx, mz, mw, md] of [[-21.5, -24.5, 3.6, 12.0], [-61.5, -34.0, 3.6, 11.0]]) {
+  for (const [mx, mz, mw, md] of [[-38.5, -24.5, 3.6, 12.0], [-77.5, -34.0, 3.6, 11.0]]) {
     const canopy = new THREE.Mesh(new THREE.BoxGeometry(mw, 0.12, md), steelMat);
     canopy.position.set(mx, groundY + 3.45, mz);
     plazaGroup.add(canopy);
@@ -723,21 +755,21 @@ export function buildEtoileContext(groundY) {
 
   const surroundingSpecs = [
     // Constellation & Naos (Lot C5.1 — JBMN & SUB Architectes, 3 stepped blocks SW across Rue de la Fraternité)
-    { name: 'constellation-1', x: -30, z: 6,   w: 14, d: 13, floors: 4, facadeMat: coolConcreteMat, deepLoggias: true, activeGround: true },
-    { name: 'constellation-2', x: -48, z: 10,  w: 15, d: 12, floors: 5, facadeMat: coolConcreteMat, deepLoggias: true },
-    { name: 'naos-3',          x: -36, z: -9,  w: 13, d: 11, floors: 5, facadeMat: paleConcreteMat, pvPanels: true },
+    { name: 'constellation-1', x: -46, z: 6,   w: 14, d: 13, floors: 4, facadeMat: coolConcreteMat, deepLoggias: true, activeGround: true },
+    { name: 'constellation-2', x: -64, z: 10,  w: 15, d: 12, floors: 5, facadeMat: coolConcreteMat, deepLoggias: true },
+    { name: 'naos-3',          x: -50, z: -10, w: 13, d: 11, floors: 5, facadeMat: paleConcreteMat, pvPanels: true },
 
-    // Archipel (Lot C9 — BAMAA & Hardel Le Bihan, timber-structured volumes West of Place Rosa Parks)
-    { name: 'archipel-1',      x: -76, z: -18, w: 15, d: 16, floors: 5, facadeMat: paleConcreteMat, timberUpper: true, activeGround: true },
-    { name: 'archipel-2',      x: -78, z: -38, w: 16, d: 15, floors: 6, facadeMat: paleConcreteMat, timberUpper: true, pvPanels: true },
+    // Archipel (Lot C9 — BAMAA & Hardel Le Bihan / Bouygues Immobilier, timber-structured volumes West of Place Rosa Parks)
+    { name: 'archipel-1',      x: -91, z: -18, w: 15, d: 16, floors: 5, facadeMat: paleConcreteMat, timberUpper: true, activeGround: true },
+    { name: 'archipel-2',      x: -93, z: -38, w: 16, d: 15, floors: 6, facadeMat: paleConcreteMat, timberUpper: true, pvPanels: true },
 
-    // ICONE (Lot C10 — Nicolas Hugoo, U-shaped tinted concrete & timber overlooking Place Rosa Parks North)
-    { name: 'icone-west',      x: -54, z: -69, w: 12, d: 18, floors: 5, facadeMat: tintedMineralMat, timberUpper: true, activeGround: true },
-    { name: 'icone-north',     x: -38, z: -74, w: 22, d: 10, floors: 6, facadeMat: tintedMineralMat, pvPanels: true },
-    { name: 'icone-east',      x: -24, z: -68, w: 11, d: 16, floors: 5, facadeMat: tintedMineralMat, timberUpper: true },
+    // ICONE (Lot C10 — Nicolas Hugoo / Bouygues Immobilier, U-shaped tinted concrete & timber overlooking Place Rosa Parks North)
+    { name: 'icone-west',      x: -70, z: -69, w: 12, d: 18, floors: 5, facadeMat: tintedMineralMat, timberUpper: true, activeGround: true },
+    { name: 'icone-north',     x: -54, z: -74, w: 22, d: 10, floors: 6, facadeMat: tintedMineralMat, pvPanels: true },
+    { name: 'icone-east',      x: -40, z: -68, w: 11, d: 16, floors: 5, facadeMat: tintedMineralMat, timberUpper: true },
 
     // Campus de l'Étoile (IFPS / Grand Forma — Dietmar Feichtinger, 5 Cours Gisèle Halimi)
-    { name: 'campus-etoile',   x: -82, z: -66, w: 24, d: 18, floors: 5, facadeMat: timberFacadeMat, timberUpper: true, activeGround: true, pvPanels: true },
+    { name: 'campus-etoile',   x: -97, z: -66, w: 24, d: 18, floors: 5, facadeMat: timberFacadeMat, timberUpper: true, activeGround: true, pvPanels: true },
 
     // Le Mimèsis (Haute-Savoie Habitat / Cathrin Trebeljahr) & Artéo (Halpades / Atelier Martel — Lot C8, East of Rue du Jura)
     { name: 'mimesis-c8',      x: 78,  z: -34, w: 18, d: 14, floors: 5, facadeMat: paleConcreteMat, pvPanels: true },
@@ -814,20 +846,21 @@ export function buildEtoileContext(groundY) {
 
   // [x, z, heightM, canopyColorIdx]
   // Carefully positioned across Atelier LJN courtyard, Av. Marguerite Yourcenar,
-  // Rue de la Fraternité, Place Rosa Parks, and Jardin Ferroviaire!
+  // pedestrian venelle (leaving Ch3's window sightline to DiverCity clear!),
+  // Rue de la Fraternité, Place Rosa Parks, and Jardin Ferroviaire.
   const treeList = [
     // Atelier LJN Cœur d'Îlot (North of Cassiopée — lush multi-stem grove)
     [4.5, -8.5, 9.2, 0],  [10.8, -12.5, 10.4, 1], [15.5, -7.2, 8.6, 2],
     [22.5, -9.8, 10.8, 0], [28.5, -14.5, 9.6, 1], [33.5, -8.5, 10.2, 2],
-    [12.5, -21.5, 9.8, 1], [22.0, -24.5, 11.0, 0], [30.5, -26.5, 9.4, 2],
+    [13.5, -21.5, 9.8, 1], [22.0, -24.5, 11.0, 0], [30.5, -26.5, 9.4, 2],
     [28.0, -33.0, 10.0, 0], [36.0, -21.0, 8.8, 1],
-    // Avenue Marguerite Yourcenar & Rue de la Fraternité street trees
-    [-2.5, 14.2, 8.4, 0], [9.5, 14.2, 8.8, 1], [23.0, 14.2, 8.6, 2], [38.0, 14.2, 9.0, 0], [54.0, 14.2, 8.5, 1],
-    [-4.8, 4.5, 8.6, 1], [-4.8, -6.5, 9.2, 0], [-4.8, -19.0, 9.0, 2], [-15.8, -1.5, 8.8, 1], [-15.8, 10.5, 8.4, 0],
+    // Avenue Marguerite Yourcenar & Venelle / Rue de la Fraternité street trees
+    [-16.0, 14.2, 8.4, 1], [-2.5, 14.2, 8.4, 0], [9.5, 14.2, 8.8, 1], [23.0, 14.2, 8.6, 2], [38.0, 14.2, 9.0, 0], [54.0, 14.2, 8.5, 1],
+    [-5.8, 9.2, 8.2, 1], [-5.8, -9.2, 8.8, 0], [-5.8, -19.5, 9.0, 2], [-25.5, -20.5, 8.8, 1], [-35.8, -1.5, 8.8, 1], [-35.8, 10.5, 8.4, 0],
     // Place Rosa Parks urban grove (~50 trees theme represented cleanly)
-    [-24.0, -14.5, 8.8, 0], [-30.0, -14.5, 9.4, 1], [-50.0, -14.5, 8.6, 2], [-58.0, -16.5, 9.2, 0],
-    [-25.5, -42.5, 9.0, 1], [-34.0, -45.0, 9.6, 0], [-48.0, -45.5, 8.8, 2], [-57.5, -43.0, 9.2, 1],
-    [-58.5, -27.0, 8.5, 0], [-25.0, -32.0, 8.2, 2],
+    [-40.0, -14.5, 8.8, 0], [-48.0, -14.5, 9.4, 1], [-66.0, -14.5, 8.6, 2], [-74.0, -16.5, 9.2, 0],
+    [-41.5, -42.5, 9.0, 1], [-50.0, -45.0, 9.6, 0], [-64.0, -45.5, 8.8, 2], [-73.5, -43.0, 9.2, 1],
+    [-74.5, -27.0, 8.5, 0], [-41.0, -32.0, 8.2, 2],
     // Le Jardin Ferroviaire linear park (spaced & kept <= 10.2m so Mont Salève shines!)
     [-72.0, 32.0, 9.2, 0], [-56.0, 44.0, 9.8, 1], [-42.0, 38.0, 8.6, 2],
     [-24.0, 41.0, 9.4, 0], [-14.0, 50.0, 8.8, 1], [3.5, 39.5, 9.2, 2],
@@ -880,11 +913,11 @@ export function buildEtoileContext(groundY) {
   markHideInRT(treesGroup);
   ctxGroup.add(treesGroup);
 
-  // Subtle Trame Noire low-glare pedestrian light bollards along paths & Rue de la Fraternité
+  // Subtle Trame Noire low-glare pedestrian light bollards along paths, venelle & Rue de la Fraternité
   const bollardCoords = [
-    [-4.2, 12.2], [5.5, 12.2], [16.5, 12.2], [28.0, 12.2],
+    [-16.0, 12.2], [-4.2, 12.2], [5.5, 12.2], [16.5, 12.2], [28.0, 12.2],
     [-4.2, 2.0], [-4.2, -9.0], [17.5, -6.0], [17.5, -16.0],
-    [-16.0, 32.5], [2.0, 32.5], [20.0, 32.5], [-34.0, -24.0], [-48.0, -34.0]
+    [-16.0, 32.5], [2.0, 32.5], [20.0, 32.5], [-50.0, -24.0], [-64.0, -34.0]
   ];
   const bollardPostInst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.08, 0.09, 0.95, 6), darkRailMat, bollardCoords.length);
   const bollardHeadInst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.085, 0.085, 0.16, 6), bollardGlowMat, bollardCoords.length);

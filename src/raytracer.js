@@ -56,15 +56,16 @@ export const RT_PROFILES = {
 };
 
 export function detectGpuProfile(renderer) {
-  const gl = renderer.getContext();
+  const gl = renderer?.getContext ? renderer.getContext() : null;
   let raw = '';
   try {
-    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
     if (ext) raw = String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '');
   } catch (_) {}
 
-  const isMobileUa = /Android|iPhone|iPad|iPod|Mobile|SM-F/i.test(navigator.userAgent);
-  const isCoarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+  const isMobileUa = /Android|iPhone|iPad|iPod|Mobile|SM-F|SM-S/i.test(ua);
+  const isCoarse = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
   const upper = raw.toUpperCase();
 
   let gpuLabel = 'WebGL2 GPU';
@@ -72,16 +73,23 @@ export function detectGpuProfile(renderer) {
   const gtxMatch = raw.match(/GTX\s*\d{4}\s*(?:Ti|SUPER)?/i);
   const rxMatch = raw.match(/RX\s*\d{4}\s*(?:XT|XTX)?/i);
   const adrenoMatch = raw.match(/Adreno\s*(?:\(TM\)\s*)?\d+/i);
+  const xclipseMatch = raw.match(/Xclipse\s*\d+/i);
   const appleMatch = raw.match(/Apple\s*(?:M\d+(?:\s*(?:Pro|Max|Ultra))?|GPU)/i);
+  const intelMatch = raw.match(/Intel\s*(?:\(R\)\s*)?(?:Arc|Iris|UHD|HD)\s*[A-Za-z0-9]*/i);
 
   if (rtxMatch) gpuLabel = `NVIDIA ${rtxMatch[0].replace(/\s+/g, ' ').trim()}`;
   else if (gtxMatch) gpuLabel = `NVIDIA ${gtxMatch[0].replace(/\s+/g, ' ').trim()}`;
   else if (rxMatch) gpuLabel = `AMD ${rxMatch[0].replace(/\s+/g, ' ').trim()}`;
-  else if (adrenoMatch) gpuLabel = adrenoMatch[0].replace(/\(TM\)\s*/i, '').trim();
-  else if (appleMatch) gpuLabel = appleMatch[0].trim();
+  else if (adrenoMatch) gpuLabel = `Qualcomm ${adrenoMatch[0].replace(/\(TM\)\s*/i, '').replace(/\s+/g, ' ').trim()}`;
+  else if (xclipseMatch) gpuLabel = `Samsung ${xclipseMatch[0].replace(/\s+/g, ' ').trim()}`;
+  else if (/IMMORTALIS/i.test(raw)) gpuLabel = 'ARM Immortalis GPU';
   else if (/MALI/i.test(raw)) gpuLabel = 'ARM Mali GPU';
+  else if (appleMatch) gpuLabel = appleMatch[0].trim();
+  else if (intelMatch) gpuLabel = intelMatch[0].replace(/\(R\)\s*/i, '').replace(/\s+/g, ' ').trim();
   else if (/SWIFTSHADER|LLVMPIPE|SOFTWARE/i.test(upper)) gpuLabel = 'Software WebGL';
-  else if (raw) gpuLabel = raw.replace(/^ANGLE\s*\([^,]+,\s*/i, '').split(/[(),]/)[0].trim().slice(0, 22);
+  else if (raw && !/^ANGLE\s*\(Google/i.test(raw)) {
+    gpuLabel = raw.replace(/^ANGLE\s*\([^,]+,\s*/i, '').split(/[(),]/)[0].trim().slice(0, 24) || 'WebGL2 GPU';
+  }
 
   if (/SWIFTSHADER|LLVMPIPE|SOFTWARE/i.test(upper)) {
     return { profileKey: 'fast', gpuLabel, isSoftware: true };

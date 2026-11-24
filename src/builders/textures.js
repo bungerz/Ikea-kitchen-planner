@@ -73,13 +73,82 @@ function hexToRgb(hex) {
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
+const IS_MOBILE_DEVICE = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile|SM-F/i.test(navigator.userAgent || '');
+
+/**
+ * Builds a WebGL2-compliant DataTexture with an explicit pure-JS box-filtered mipmap pyramid
+ * down to 1×1 (zero extra <canvas> allocations, < 1 ms per texture).
+ * Completely bypasses gl.generateMipmap() on immutable SRGB8_ALPHA8 textures (Three.js r181
+ * Android Chrome / ANGLE driver bug #32246 where mip levels > 0 read corrupted blue/black VRAM).
+ */
+function buildSrgbDataTexture(canvas, { repX = 1, repY = 1, wrap = true } = {}) {
+  if (!canvas || !canvas.width || !canvas.height) return null;
+  const ctx = canvas.getContext && canvas.getContext('2d');
+  if (!ctx || typeof ctx.getImageData !== 'function') return null;
+
+  const w0 = canvas.width;
+  const h0 = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w0, h0);
+  const src0 = new Uint8Array(imgData.data.buffer, imgData.data.byteOffset, imgData.data.byteLength);
+
+  const mipmaps = [{ data: src0, width: w0, height: h0 }];
+  let prev = src0;
+  let pw = w0;
+  let ph = h0;
+  while (pw > 1 || ph > 1) {
+    const nw = Math.max(1, pw >> 1);
+    const nh = Math.max(1, ph >> 1);
+    const next = new Uint8Array(nw * nh * 4);
+    for (let y = 0; y < nh; y++) {
+      const sy0 = Math.min(ph - 1, y * 2);
+      const sy1 = Math.min(ph - 1, sy0 + 1);
+      for (let x = 0; x < nw; x++) {
+        const sx0 = Math.min(pw - 1, x * 2);
+        const sx1 = Math.min(pw - 1, sx0 + 1);
+        const i00 = (sy0 * pw + sx0) * 4;
+        const i10 = (sy0 * pw + sx1) * 4;
+        const i01 = (sy1 * pw + sx0) * 4;
+        const i11 = (sy1 * pw + sx1) * 4;
+        const di = (y * nw + x) * 4;
+        next[di]     = (prev[i00]     + prev[i10]     + prev[i01]     + prev[i11]     + 2) >> 2;
+        next[di + 1] = (prev[i00 + 1] + prev[i10 + 1] + prev[i01 + 1] + prev[i11 + 1] + 2) >> 2;
+        next[di + 2] = (prev[i00 + 2] + prev[i10 + 2] + prev[i01 + 2] + prev[i11 + 2] + 2) >> 2;
+        next[di + 3] = (prev[i00 + 3] + prev[i10 + 3] + prev[i01 + 3] + prev[i11 + 3] + 2) >> 2;
+      }
+    }
+    mipmaps.push({ data: next, width: nw, height: nh });
+    prev = next;
+    pw = nw;
+    ph = nh;
+  }
+
+  const tex = new THREE.DataTexture(src0, w0, h0, THREE.RGBAFormat);
+  tex.mipmaps = mipmaps;
+  tex.generateMipmaps = false;
+  tex.flipY = true;
+  tex.wrapS = wrap ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+  tex.wrapT = wrap ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+  tex.repeat.set(repX, repY);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = IS_MOBILE_DEVICE ? 4 : 8;
+  tex.userData.shared = true; // Never disposed by disposeObject3D()!
+  tex.needsUpdate = true;
+  return tex;
+}
+
 function finalizeTexture(canvas, { srgb = true, repX = 1, repY = 1 } = {}) {
+  if (srgb) {
+    const dt = buildSrgbDataTexture(canvas, { repX, repY, wrap: true });
+    if (dt) return dt;
+  }
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(repX, repY);
   tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = IS_MOBILE_DEVICE ? 4 : 8;
   tex.userData.shared = true; // Never disposed by disposeObject3D()!
   tex.needsUpdate = true;
   return tex;
@@ -624,10 +693,13 @@ export function getArtworkTexture(variant = 0) {
     ctx.beginPath(); ctx.arc(128, 198, 52, 0, Math.PI * 2); ctx.fill();
   }
 
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.userData.shared = true;
-  tex.needsUpdate = true;
+  const tex = buildSrgbDataTexture(c, { wrap: false }) || (() => {
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.userData.shared = true;
+    t.needsUpdate = true;
+    return t;
+  })();
   texCache.set(key, tex);
   return tex;
 }

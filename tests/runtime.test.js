@@ -96,6 +96,7 @@ test('every 3D builder, kitchen variant, furniture model, overlay, and raytracer
   for (const groupName of [
     'cassiopee-b32',
     'divercity-b31',
+    'divercity-ch3-wing',
     'andromede-b33',
     'courtyard-ljn',
     'jardin-ferroviaire',
@@ -105,6 +106,11 @@ test('every 3D builder, kitchen variant, furniture model, overlay, and raytracer
   ]) {
     assert.ok(env.group.getObjectByName(groupName), `Expected exterior group "${groupName}" to exist`);
   }
+
+  // Verify Bouygues DiverCity wing sits directly on the West side of Chambre 3 and stays visible in RT
+  const dcCh3 = env.group.getObjectByName('divercity-ch3-wing');
+  assert.ok(dcCh3.position.x < -10 && dcCh3.position.x > -24, 'DiverCity Ch3 wing should sit closely West of Chambre 3');
+  assert.notEqual(dcCh3.userData.hideInRT, true, 'DiverCity Ch3 wing should remain visible from Ch3 in RT mode');
 
   // Verify stepped upper floors above Lot 17 stay hidden in default Cutaway and toggle cleanly
   assert.equal(env.upperFloorsGroup.visible, false, 'Upper setbacks must default hidden for Cutaway');
@@ -237,11 +243,32 @@ test('all Spatial Studio UI panels, contextual inspector variants, themes & inte
   }
 });
 
-test('raytracer module imports cleanly and profiles/HDRI config are valid', async () => {
+test('raytracer module imports cleanly and profiles/HDRI/GPU detection are valid', async () => {
   const mod = await import('../src/raytracer.js');
   assert.ok(mod.RT_PROFILES.fast);
   assert.ok(mod.RT_PROFILES.balanced);
   assert.ok(mod.RT_PROFILES.photo);
   assert.equal(mod.RT_PROFILES.photo.bounces, 8);
   assert.equal(typeof mod.KitchenRayTracer, 'function');
+
+  const makeMockRenderer = (rendererStr) => ({
+    getContext: () => ({
+      getExtension: () => ({ UNMASKED_RENDERER_WEBGL: 0x9246 }),
+      getParameter: () => rendererStr
+    })
+  });
+
+  const rtx = mod.detectGpuProfile(makeMockRenderer('ANGLE (NVIDIA, NVIDIA GeForce RTX 3070 Direct3D11 vs_5_0 ps_5_0, D3D11)'));
+  assert.equal(rtx.gpuLabel, 'NVIDIA RTX 3070');
+  assert.equal(rtx.profileKey, 'balanced');
+  assert.equal(rtx.isSoftware, false);
+
+  const adreno = mod.detectGpuProfile(makeMockRenderer('ANGLE (Qualcomm, Adreno (TM) 840, OpenGL ES 3.2)'));
+  assert.equal(adreno.gpuLabel, 'Qualcomm Adreno 840');
+  assert.equal(adreno.profileKey, 'fast');
+  assert.equal(adreno.isSoftware, false);
+
+  const xclipse = mod.detectGpuProfile(makeMockRenderer('ANGLE (Samsung, Samsung Xclipse 950, OpenGL ES 3.2)'));
+  assert.equal(xclipse.gpuLabel, 'Samsung Xclipse 950');
+  assert.equal(xclipse.profileKey, 'fast');
 });
