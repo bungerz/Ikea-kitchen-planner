@@ -237,7 +237,7 @@ function initThree() {
 
   skyIBL = new DynamicSkyIBL(renderer);
 
-  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 420);
+  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 560);
   camera.position.set(...OVERVIEW_CAMERAS.cutaway.pos);
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -245,7 +245,7 @@ function initThree() {
   controls.dampingFactor = 0.08;
   controls.maxPolarAngle = Math.PI * 0.56;
   controls.minDistance = 0.85;
-  controls.maxDistance = 32;
+  controls.maxDistance = 72;
   controls.target.set(...OVERVIEW_CAMERAS.cutaway.target);
   controls.update();
 
@@ -419,6 +419,7 @@ function initThree() {
   applyAllRoomPaints();
   setBuildingContextVisible(state.showBuilding);
   setCurtainsVisible(state.showCurtains);
+  setCeilingsVisible(state.showCeilings);
   applyAmbillySun();
   refreshOverlaysAndDiagnostics();
 
@@ -519,6 +520,7 @@ function setCurtainsVisible(visible) {
 function setCeilingsVisible(visible) {
   state.showCeilings = Boolean(visible);
   if (apartmentShell?.ceilingGroup) apartmentShell.ceilingGroup.visible = state.showCeilings;
+  if (cassiopeeEnv?.setUpperFloorsVisible) cassiopeeEnv.setUpperFloorsVisible(state.showCeilings);
   const lbl = document.getElementById('lbl-roof');
   if (lbl) lbl.textContent = state.showCeilings ? 'ON' : 'Cutaway';
   notifyRayTracerGeometryChange();

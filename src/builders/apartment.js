@@ -109,7 +109,7 @@ function addWindowUnit(parent, { axis, coord, s, e, y0, y1, depth = 0.24, interi
   const group = new THREE.Group();
 
   const frameMat = new THREE.MeshStandardMaterial({ color: '#F2F2EF', roughness: 0.38, metalness: 0.08 });
-  const extFrameMat = new THREE.MeshStandardMaterial({ color: '#4B4D50', roughness: 0.42, metalness: 0.38 });
+  const extFrameMat = new THREE.MeshStandardMaterial({ color: '#9D7B56', roughness: 0.68, metalness: 0.02 });
   const handleMat = new THREE.MeshStandardMaterial({ color: '#D4D7DB', roughness: 0.22, metalness: 0.88 });
   const vrBoxMat = new THREE.MeshStandardMaterial({ color: '#F5F4F0', roughness: 0.72, metalness: 0.0 });
   const glassMat = new THREE.MeshPhysicalMaterial({
@@ -145,7 +145,11 @@ function addWindowUnit(parent, { axis, coord, s, e, y0, y1, depth = 0.24, interi
     glass.material.side = THREE.DoubleSide;
     glass.userData.isWindowGlass = true;
     group.add(glass);
-    addBar(len + 0.02, 0.02, 0.04, 0, h / 2 - 0.01, -interiorSign * (depth / 2 - 0.02), extFrameMat);
+    // Natural wood exterior frame trim (menuiseries extérieures châssis bois)
+    const extZ = -interiorSign * (depth / 2 - 0.03);
+    addBar(len + 0.02, 0.045, 0.04, 0, h / 2 - 0.022, extZ, extFrameMat);
+    addBar(0.045, h, 0.04, -len / 2 + 0.022, 0, extZ, extFrameMat);
+    addBar(0.045, h, 0.04, len / 2 - 0.022, 0, extZ, extFrameMat);
     group.position.set(mid, midY, coord);
   } else {
     addBar(frameD, frameT, len, 0, h / 2 - frameT / 2, 0);
@@ -163,6 +167,11 @@ function addWindowUnit(parent, { axis, coord, s, e, y0, y1, depth = 0.24, interi
     glass.material.side = THREE.DoubleSide;
     glass.userData.isWindowGlass = true;
     group.add(glass);
+    // Natural wood exterior frame trim (menuiseries extérieures châssis bois)
+    const extX = -interiorSign * (depth / 2 - 0.03);
+    addBar(0.04, 0.045, len + 0.02, extX, h / 2 - 0.022, 0, extFrameMat);
+    addBar(0.04, h, 0.045, extX, 0, -len / 2 + 0.022, extFrameMat);
+    addBar(0.04, h, 0.045, extX, 0, len / 2 - 0.022, extFrameMat);
     group.position.set(coord, midY, mid);
   }
   parent.add(group);

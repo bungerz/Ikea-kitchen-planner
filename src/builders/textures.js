@@ -631,3 +631,159 @@ export function getArtworkTexture(variant = 0) {
   texCache.set(key, tex);
   return tex;
 }
+
+/**
+ * 10. Clément Vergély Architectural Concrete (Alternating Smooth vs Rough/Bush-Hammered)
+ * Faithful to Cassiopée's official ÉcoQuartier de l'Étoile specification:
+ * "Le béton de façade est traité avec alternance entre un aspect lisse et un aspect rugueux"
+ */
+export function getExteriorConcreteTextures(variant = 'rough', repX = 2, repY = 2) {
+  const key = `extConcrete:${variant}:${repX}:${repY}`;
+  if (texCache.has(key)) return texCache.get(key);
+
+  const w = 256, h = 256;
+  const fbm = makeNoise2D(variant === 'smooth' ? 881 : 997);
+  const rng = makeRng(variant === 'smooth' ? 4211 : 7331);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(w, h);
+  const hBuf = new Float32Array(w * h);
+
+  const isSmooth = variant === 'smooth';
+  const baseR = isSmooth ? 225 : 213;
+  const baseG = isSmooth ? 219 : 207;
+  const baseB = isSmooth ? 208 : 196;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const n = fbm(x / 36, y / 36, 4);
+      const grit = isSmooth ? (rng() - 0.5) * 4 : (rng() - 0.5) * 20;
+      const microBand = isSmooth ? 0 : Math.sin(y * 0.45) * 3.5;
+
+      // Subtle architectural formwork joints on smooth bands
+      const isJoint = isSmooth && (x % 128 < 2 || y % 128 < 2);
+      const jointDip = isJoint ? -14 : 0;
+
+      const delta = (n - 0.5) * (isSmooth ? 12 : 24) + grit + microBand + jointDip;
+      const idx = (y * w + x) * 4;
+      img.data[idx]     = clampByte(baseR + delta);
+      img.data[idx + 1] = clampByte(baseG + delta * 0.96);
+      img.data[idx + 2] = clampByte(baseB + delta * 0.90);
+      img.data[idx + 3] = 255;
+
+      hBuf[y * w + x] = isJoint
+        ? 0.15
+        : Math.max(0, Math.min(1, 0.5 + (n - 0.5) * (isSmooth ? 0.18 : 0.45) + (grit / (isSmooth ? 90 : 48))));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  if (isSmooth) {
+    // Subtle architectural formwork tie-cone recesses
+    ctx.fillStyle = 'rgba(135, 128, 118, 0.35)';
+    for (const tx of [32, 96, 160, 224]) {
+      for (const ty of [64, 192]) {
+        ctx.beginPath();
+        ctx.arc(tx, ty, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  const map = finalizeTexture(c, { srgb: true, repX, repY });
+  const normalMap = buildNormalFromHeight(hBuf, w, h, isSmooth ? 0.75 : 2.35, repX, repY);
+  const res = { map, normalMap };
+  texCache.set(key, res);
+  return res;
+}
+
+/**
+ * 11. Atelier LJN Signature 20×20 cm Limestone Paver Grid (Îlot B3 Cœur d'Îlot)
+ */
+export function getCourtyardPaverTexture(repX = 6, repY = 6) {
+  const key = `ljnPaver:${repX}:${repY}`;
+  if (texCache.has(key)) return texCache.get(key);
+
+  const w = 256, h = 256;
+  const cells = 8; // 8×8 grid of 20cm pavers per tile = 1.6m repeat
+  const cellPx = w / cells;
+  const rng = makeRng(31415);
+  const fbm = makeNoise2D(2718);
+
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const hBuf = new Float32Array(w * h);
+
+  // Subtle green-grey permeable joint background
+  ctx.fillStyle = '#859177';
+  ctx.fillRect(0, 0, w, h);
+
+  for (let cy = 0; cy < cells; cy++) {
+    for (let cx = 0; cx < cells; cx++) {
+      const shade = Math.round((rng() - 0.5) * 18);
+      const r = clampByte(209 + shade);
+      const g = clampByte(204 + shade * 0.95);
+      const b = clampByte(192 + shade * 0.88);
+      ctx.fillStyle = `rgb(${r},${g},${b})`;
+      ctx.fillRect(cx * cellPx + 1.5, cy * cellPx + 1.5, cellPx - 3, cellPx - 3);
+    }
+  }
+
+  for (let y = 0; y < h; y++) {
+    const ly = y % cellPx;
+    for (let x = 0; x < w; x++) {
+      const lx = x % cellPx;
+      const seam = lx < 2 || lx > cellPx - 2 || ly < 2 || ly > cellPx - 2;
+      hBuf[y * w + x] = seam ? 0.15 : 0.65 + (fbm(x / 18, y / 18, 2) - 0.5) * 0.2;
+    }
+  }
+
+  const map = finalizeTexture(c, { srgb: true, repX, repY });
+  const normalMap = buildNormalFromHeight(hBuf, w, h, 1.9, repX, repY);
+  const res = { map, normalMap };
+  texCache.set(key, res);
+  return res;
+}
+
+/**
+ * 12. Urban Ground Surfaces (Asphalt, Voie Verte Ochre Mineral, Railway Ballast)
+ */
+export function getGroundSurfaceTexture(kind = 'asphalt', repX = 8, repY = 8) {
+  const key = `ground:${kind}:${repX}:${repY}`;
+  if (texCache.has(key)) return texCache.get(key);
+
+  const w = 128, h = 128;
+  const rng = makeRng(kind === 'ballast' ? 9103 : kind === 'voieVerte' ? 5407 : 1297);
+  const fbm = makeNoise2D(kind === 'ballast' ? 404 : 606);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(w, h);
+
+  const palette = kind === 'voieVerte'
+    ? [198, 178, 146, 18]
+    : kind === 'ballast'
+      ? [116, 113, 108, 34]
+      : [92, 96, 102, 16];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const n = fbm(x / 16, y / 16, 3);
+      const speck = (rng() - 0.5) * palette[3];
+      const delta = (n - 0.5) * 18 + speck;
+      const idx = (y * w + x) * 4;
+      img.data[idx]     = clampByte(palette[0] + delta);
+      img.data[idx + 1] = clampByte(palette[1] + delta * 0.98);
+      img.data[idx + 2] = clampByte(palette[2] + delta * 0.95);
+      img.data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const map = finalizeTexture(c, { srgb: true, repX, repY });
+  texCache.set(key, map);
+  return map;
+}
+

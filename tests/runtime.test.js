@@ -89,7 +89,39 @@ test('every 3D builder, kitchen variant, furniture model, overlay, and raytracer
 
   const env = buildCassiopeeEnvironment(scene);
   env.updateSky(computeAmbillySun('summer', 16.0));
-  env.updateSky(computeAmbillySun('winter', 21.5));
+  env.updateSky(computeAmbillySun('summer', 20.6)); // Twilight
+  env.updateSky(computeAmbillySun('winter', 21.5)); // Night
+
+  // Verify ZAC de l'Étoile architectural & urban sub-groups exist
+  for (const groupName of [
+    'cassiopee-b32',
+    'divercity-b31',
+    'andromede-b33',
+    'courtyard-ljn',
+    'jardin-ferroviaire',
+    'place-rosa-parks',
+    'passerelle-etoile',
+    'alpine-horizon'
+  ]) {
+    assert.ok(env.group.getObjectByName(groupName), `Expected exterior group "${groupName}" to exist`);
+  }
+
+  // Verify stepped upper floors above Lot 17 stay hidden in default Cutaway and toggle cleanly
+  assert.equal(env.upperFloorsGroup.visible, false, 'Upper setbacks must default hidden for Cutaway');
+  env.setUpperFloorsVisible(true);
+  assert.equal(env.upperFloorsGroup.visible, true);
+  env.setUpperFloorsVisible(false);
+  assert.equal(env.upperFloorsGroup.visible, false);
+
+  // Verify distant horizon remains hidden from GPU path tracer BVH
+  let alpineHiddenCount = 0;
+  env.group.getObjectByName('alpine-horizon').traverse((c) => {
+    if (c.isMesh) {
+      assert.equal(c.userData.hideInRT, true, 'Distant Alpine horizon meshes must set hideInRT=true');
+      alpineHiddenCount++;
+    }
+  });
+  assert.ok(alpineHiddenCount >= 4, 'Expected Mont Salève, Jura, Voirons & Mont-Blanc 3D ridges');
 
   const shell = buildApartmentShell(scene);
   assert.ok(shell.roomPaintMaterials.ch3.main.normalMap, 'Wall materials should have plaster normalMap');
