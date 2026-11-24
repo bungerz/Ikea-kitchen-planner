@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --color-studio-bg: #F7F5F1;
+  --color-studio-card: #FFFFFF;
+  --color-studio-subtle: #EFECE6;
+  --color-studio-border: #E2DDD5;
+  --color-studio-ink: #1E1C19;
+  --color-studio-muted: #666057;
+  --color-studio-accent: #8B6B4E;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #E4E0D8;
+  font-family: var(--font-sans);
+  color: #1E1C19;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #E4E0D8;
+}
+
+#viewport {
+  position: relative;
+  flex: 0 0 48%;
+  min-height: 220px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#viewport canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  touch-action: none;
+  user-select: none;
+}
+
+#sidebar {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #F7F5F1;
+  border-top: 1px solid #E2DDD5;
+  z-index: 10;
+}
+
+@media (min-width: 780px) {
+  #app {
+    flex-direction: row;
+  }
+  #viewport {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    width: auto;
+    height: 100%;
+  }
+  #sidebar {
+    flex: 0 0 clamp(340px, 33vw, 420px);
+    max-width: 44vw;
+    height: 100%;
+    border-top: none;
+    border-left: 1px solid #E2DDD5;
+  }
+}
+
+#app.sidebar-collapsed #sidebar {
+  display: none;
+}
+
+#app.sidebar-collapsed #viewport {
+  flex: 1 1 100%;
+  height: 100%;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+#sidebar-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(30, 28, 25, 0.12);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.dark-glass-pill {
+  background: rgba(24, 22, 19, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+@keyframes rtPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.rt-pulse {
+  animation: rtPulse 1.4s ease-in-out infinite;
+}

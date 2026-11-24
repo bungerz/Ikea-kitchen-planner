@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import {
   IKEA_BEDS,
   IKEA_SOFAS,
@@ -6,8 +7,9 @@ import {
   TMA_LIGHT_POINTS
 } from '../catalogs/furniture.js';
 import { WOOD_FINISHES, SOFA_FABRICS } from '../catalogs/materials.js';
-import { getWoodTexture, getFabricTexture } from './textures.js';
+import { getWoodPbrTextures, getFabricPbrTextures } from './textures.js';
 import { buildRichComponentMesh, buildGlbItemMesh } from './richComponent3d.js';
+import { clearGroupAndDispose } from '../core/dispose.js';
 
 /* =========================================================================
  * 3D FURNITURE, LIGHT FIXTURES & PARAMETRIC PROMPT-TO-3D BUILDERS
@@ -15,30 +17,59 @@ import { buildRichComponentMesh, buildGlbItemMesh } from './richComponent3d.js';
  * and userData.footprint = { w, d } for live wall-clearance HUD & selection!
  * ========================================================================= */
 
+const sharedMatCache = new Map();
+
 function makeWoodMat(finishKey = 'walnut', repX = 1, repY = 1) {
+  const key = `wood:${finishKey}:${repX}:${repY}`;
+  if (sharedMatCache.has(key)) return sharedMatCache.get(key);
   const wf = WOOD_FINISHES[finishKey] || WOOD_FINISHES.walnut;
   const isSolid = finishKey === 'white';
-  return new THREE.MeshStandardMaterial({
-    map: isSolid ? null : getWoodTexture(finishKey, repX, repY),
+  const pbr = isSolid ? null : getWoodPbrTextures(finishKey, repX, repY);
+  const mat = new THREE.MeshStandardMaterial({
+    map: pbr ? pbr.map : null,
+    normalMap: pbr ? pbr.normalMap : null,
+    normalScale: new THREE.Vector2(0.35, 0.35),
+    roughnessMap: pbr ? pbr.roughnessMap : null,
     color: isSolid ? wf.hex : '#FFFFFF',
-    roughness: wf.roughness,
+    roughness: pbr ? 1.0 : wf.roughness,
     metalness: 0.0,
-    envMapIntensity: 0.30
+    envMapIntensity: 0.38
   });
+  mat.userData.shared = true;
+  sharedMatCache.set(key, mat);
+  return mat;
 }
 
 function makeFabricMat(hex = '#DDD4C6', roughness = 0.90, rep = 3) {
-  return new THREE.MeshStandardMaterial({
-    map: getFabricTexture(hex, rep, rep),
+  const key = `fab:${hex}:${roughness}:${rep}`;
+  if (sharedMatCache.has(key)) return sharedMatCache.get(key);
+  const pbr = getFabricPbrTextures(hex, rep, rep);
+  const mat = new THREE.MeshStandardMaterial({
+    map: pbr.map,
+    normalMap: pbr.normalMap,
+    normalScale: new THREE.Vector2(0.45, 0.45),
     color: '#FFFFFF',
     roughness,
     metalness: 0.0,
-    envMapIntensity: 0.18
+    envMapIntensity: 0.22
   });
+  mat.userData.shared = true;
+  sharedMatCache.set(key, mat);
+  return mat;
 }
 
 function addBox(parent, w, h, d, mat, x = 0, y = 0, z = 0, cast = true) {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z);
+  m.castShadow = cast;
+  m.receiveShadow = true;
+  parent.add(m);
+  return m;
+}
+
+function addRoundedBox(parent, w, h, d, mat, x = 0, y = 0, z = 0, radius = 0.025, cast = true) {
+  const r = Math.min(radius, w * 0.42, h * 0.42, d * 0.42);
+  const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), mat);
   m.position.set(x, y, z);
   m.castShadow = cast;
   m.receiveShadow = true;

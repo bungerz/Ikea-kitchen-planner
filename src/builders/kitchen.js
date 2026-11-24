@@ -209,24 +209,53 @@ export class KitchenBuilder {
     bsEast.position.set(EAST_X - 0.012, 1.19, 4.60);
     this.root.add(bsNorth, bsEast);
 
-    /* ---- 5. SINK + GOOSENECK FAUCET (NORTH WORKTOP) & INDUCTION COOKTOP (EAST WORKTOP) ---- */
-    // Undermount Sink centered on North Worktop (X = 3.47, Z = 3.44)
-    const sinkRim = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.014, 0.46), steelMat);
-    sinkRim.position.set(3.47, CAB_TOP + 0.032, NORTH_Z + 0.32);
-    const sinkBasin = new THREE.Mesh(new THREE.BoxGeometry(0.70, 0.02, 0.40), new THREE.MeshStandardMaterial({ color: '#8A9096', roughness: 0.35, metalness: 0.78 }));
-    sinkBasin.position.set(3.47, CAB_TOP + 0.030, NORTH_Z + 0.32);
+    /* ---- 5. RECESSED UNDERMOUNT SINK + GOOSENECK FAUCET & INDUCTION COOKTOP ---- */
+    // True recessed stainless steel sink basin (opening cut cleanly into North worktop at X = 3.12..3.82, Z = 3.24..3.64!)
+    const sinkMat = new THREE.MeshStandardMaterial({ color: '#AEB4BA', roughness: 0.24, metalness: 0.88 });
+    const sinkDarkMat = new THREE.MeshStandardMaterial({ color: '#7D848B', roughness: 0.30, metalness: 0.85 });
+    const sW = 0.70, sD = 0.40, sDepth = 0.18, sWall = 0.012;
+    const sCx = 3.47, sCz = NORTH_Z + 0.31;
+    const sTopY = CAB_TOP + 0.012;
+
+    const sinkGroup = new THREE.Group();
+    // Thin brushed rim flange flush with worktop
+    const rimBack  = new THREE.Mesh(new THREE.BoxGeometry(sW + 0.04, 0.008, 0.02), steelMat);
+    rimBack.position.set(sCx, CAB_TOP + 0.031, sCz - sD / 2 - 0.01);
+    const rimFront = new THREE.Mesh(new THREE.BoxGeometry(sW + 0.04, 0.008, 0.02), steelMat);
+    rimFront.position.set(sCx, CAB_TOP + 0.031, sCz + sD / 2 + 0.01);
+    const rimL = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.008, sD), steelMat);
+    rimL.position.set(sCx - sW / 2 - 0.01, CAB_TOP + 0.031, sCz);
+    const rimR = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.008, sD), steelMat);
+    rimR.position.set(sCx + sW / 2 + 0.01, CAB_TOP + 0.031, sCz);
+
+    // Recessed basin interior (bottom + 4 walls descending into sink base cabinet!)
+    const sBottom = new THREE.Mesh(new THREE.BoxGeometry(sW, sWall, sD), sinkDarkMat);
+    sBottom.position.set(sCx, sTopY - sDepth, sCz);
+    const sDrain = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.008, 16), steelMat);
+    sDrain.position.set(sCx, sTopY - sDepth + 0.008, sCz);
+    const sWallN = new THREE.Mesh(new THREE.BoxGeometry(sW, sDepth, sWall), sinkMat);
+    sWallN.position.set(sCx, sTopY - sDepth / 2, sCz - sD / 2);
+    const sWallS = new THREE.Mesh(new THREE.BoxGeometry(sW, sDepth, sWall), sinkMat);
+    sWallS.position.set(sCx, sTopY - sDepth / 2, sCz + sD / 2);
+    const sWallW = new THREE.Mesh(new THREE.BoxGeometry(sWall, sDepth, sD), sinkMat);
+    sWallW.position.set(sCx - sW / 2, sTopY - sDepth / 2, sCz);
+    const sWallE = new THREE.Mesh(new THREE.BoxGeometry(sWall, sDepth, sD), sinkMat);
+    sWallE.position.set(sCx + sW / 2, sTopY - sDepth / 2, sCz);
+    sinkGroup.add(rimBack, rimFront, rimL, rimR, sBottom, sDrain, sWallN, sWallS, sWallW, sWallE);
+    this.root.add(sinkGroup);
+
     // Gooseneck faucet
     const faucetBase = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.026, 0.04, 14), this.faucetMat);
-    faucetBase.position.set(3.47, CAB_TOP + 0.05, NORTH_Z + 0.07);
+    faucetBase.position.set(3.47, CAB_TOP + 0.05, NORTH_Z + 0.065);
     const faucetStem = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.012, 0.26, 12), this.faucetMat);
-    faucetStem.position.set(3.47, CAB_TOP + 0.18, NORTH_Z + 0.07);
-    const faucetArch = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.011, 10, 20, Math.PI), this.faucetMat);
+    faucetStem.position.set(3.47, CAB_TOP + 0.18, NORTH_Z + 0.065);
+    const faucetArch = new THREE.Mesh(new THREE.TorusGeometry(0.088, 0.011, 10, 20, Math.PI), this.faucetMat);
     faucetArch.rotation.y = Math.PI / 2;
-    faucetArch.position.set(3.47, CAB_TOP + 0.31, NORTH_Z + 0.155);
-    this.root.add(sinkRim, sinkBasin, faucetBase, faucetStem, faucetArch);
+    faucetArch.position.set(3.47, CAB_TOP + 0.31, NORTH_Z + 0.153);
+    this.root.add(faucetBase, faucetStem, faucetArch);
 
     // 4-Zone Black Induction Cooktop on East Worktop (X = 5.16, Z = 4.30)
-    const cooktop = new THREE.Mesh(new THREE.BoxGeometry(0.50, 0.010, 0.58), glassBlack);
+    const cooktop = new THREE.Mesh(new RoundedBoxGeometry(0.50, 0.010, 0.58, 2, 0.003), glassBlack);
     cooktop.position.set(EAST_X - 0.31, CAB_TOP + 0.034, 4.30);
     this.root.add(cooktop);
     const ringMat = new THREE.MeshBasicMaterial({ color: '#6E7278' });
@@ -236,10 +265,15 @@ export class KitchenBuilder {
       ring.position.set(EAST_X - 0.31 + dx, CAB_TOP + 0.040, 4.30 + dz);
       this.root.add(ring);
     });
+
+    // Tag kitchen meshes for 3D point-and-edit navigation
+    this.root.traverse(obj => {
+      if (obj.isMesh) obj.userData.clickableKitchen = true;
+    });
   }
 
   _rebuildFronts(doorDef) {
-    while (this.frontsGroup.children.length) this.frontsGroup.remove(this.frontsGroup.children[0]);
+    clearGroupAndDispose(this.frontsGroup);
     const thick = (doorDef.thicknessMm || 16) / 1000;
     const p = doorDef.profile;
 
@@ -248,9 +282,12 @@ export class KitchenBuilder {
       g.position.set(s.x, s.y, s.z);
       g.rotation.y = s.rotY;
 
-      // Base door slab
-      const slab = new THREE.Mesh(new THREE.BoxGeometry(s.w, s.h, thick), this.doorMat);
-      slab.castShadow = true; slab.receiveShadow = true;
+      // Beveled RoundedBoxGeometry door slab (catches realistic micro-highlights on edges!)
+      const slabGeo = new RoundedBoxGeometry(s.w, s.h, thick, 2, 0.0025);
+      const slab = new THREE.Mesh(slabGeo, this.doorMat);
+      slab.castShadow = true;
+      slab.receiveShadow = true;
+      slab.userData.clickableKitchen = true;
       g.add(slab);
 
       // Authentic IKEA profile moldings
@@ -262,9 +299,9 @@ export class KitchenBuilder {
         if (insetW > 0.06 && insetH > 0.05) {
           const recess = new THREE.Mesh(new THREE.BoxGeometry(insetW, insetH, 0.004), this.doorAccentMat);
           recess.position.z = thick / 2 + 0.001;
+          recess.userData.clickableKitchen = true;
           g.add(recess);
           if (p === 'stensund') {
-            // Vertical beadboard grooves
             const grooves = Math.max(2, Math.floor(insetW / 0.055));
             for (let i = 1; i < grooves; i++) {
               const gx = -insetW / 2 + (insetW * i) / grooves;
@@ -290,8 +327,8 @@ export class KitchenBuilder {
       if (s.handle && !doorDef.integratedHandle) {
         const hLen = s.handle.len || 0.15;
         const bar = s.handle.dir === 'h'
-          ? new THREE.Mesh(new THREE.BoxGeometry(hLen, 0.011, 0.024), this.hardwareMat)
-          : new THREE.Mesh(new THREE.BoxGeometry(0.011, hLen, 0.024), this.hardwareMat);
+          ? new THREE.Mesh(new RoundedBoxGeometry(hLen, 0.011, 0.024, 2, 0.003), this.hardwareMat)
+          : new THREE.Mesh(new RoundedBoxGeometry(0.011, hLen, 0.024, 2, 0.003), this.hardwareMat);
         bar.position.set(s.handle.ox || 0, s.handle.oy || 0, thick / 2 + 0.014);
         g.add(bar);
       }
@@ -301,39 +338,51 @@ export class KitchenBuilder {
   }
 
   _rebuildCountertops(ctDef) {
-    while (this.countertopGroup.children.length) this.countertopGroup.remove(this.countertopGroup.children[0]);
+    clearGroupAndDispose(this.countertopGroup);
     const t = (ctDef.thicknessCm || 2.8) / 100;
     const cy = CAB_TOP + t / 2;
+    const bevel = 0.003;
 
-    // Worktop 1: North Sink Run (183 x 63.5 cm)
-    const wt1 = new THREE.Mesh(new THREE.BoxGeometry(1.825, t, 0.635), this.countertopMat);
-    wt1.position.set(3.47, cy, NORTH_Z + 0.318);
-    wt1.castShadow = true; wt1.receiveShadow = true;
+    const addSlab = (w, d, cx, cz) => {
+      const m = new THREE.Mesh(new RoundedBoxGeometry(w, t, d, 2, bevel), this.countertopMat);
+      m.position.set(cx, cy, cz);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.userData.clickableKitchen = true;
+      this.countertopGroup.add(m);
+    };
 
-    // Worktop 2: East Cooktop Run (63.5 x 157 cm) + South Peninsula (250 x 63.5 cm)
-    const wt2East = new THREE.Mesh(new THREE.BoxGeometry(0.635, t, 0.94), this.countertopMat);
-    wt2East.position.set(EAST_X - 0.318, cy, 3.80 + 0.47);
-    wt2East.castShadow = true; wt2East.receiveShadow = true;
+    // Worktop 1: North Sink Run (183 x 63.5 cm) split cleanly around the recessed 70 x 40 cm sink cutout!
+    // Run X: 2.558..4.382, Z: 3.13..3.765 | Sink opening X: 3.12..3.82, Z: 3.24..3.64
+    addSlab(0.562, 0.635, 2.839, NORTH_Z + 0.318); // Left of sink
+    addSlab(0.562, 0.635, 4.101, NORTH_Z + 0.318); // Right of sink
+    addSlab(0.704, 0.112, 3.470, NORTH_Z + 0.056); // Behind sink (faucet deck)
+    addSlab(0.704, 0.125, 3.470, NORTH_Z + 0.573); // Front rail of sink
 
-    const wt2Pen = new THREE.Mesh(new THREE.BoxGeometry(2.50, t, 0.635), this.countertopMat);
-    wt2Pen.position.set(EAST_X - 1.25, cy, 5.06);
-    wt2Pen.castShadow = true; wt2Pen.receiveShadow = true;
-
-    this.countertopGroup.add(wt1, wt2East, wt2Pen);
+    // Worktop 2: East Cooktop Run + South Peninsula
+    addSlab(0.635, 0.94, EAST_X - 0.318, 3.80 + 0.47);
+    addSlab(2.50, 0.635, EAST_X - 1.25, 5.06);
   }
 
   _rebuildClaustra(heightMode, finishKey) {
-    while (this.claustraGroup.children.length) this.claustraGroup.remove(this.claustraGroup.children[0]);
+    clearGroupAndDispose(this.claustraGroup);
     if (heightMode === 'off') return;
 
+    const woodTex = (finishKey === 'oak' || finishKey === 'walnut') ? getWoodPbrTextures(finishKey, 1, 2) : null;
     const finMap = {
-      oak:    { map: getWoodTexture('oak', 1, 2), color: '#FFFFFF', roughness: 0.56 },
-      walnut: { map: getWoodTexture('walnut', 1, 2), color: '#FFFFFF', roughness: 0.50 },
-      black:  { map: null, color: '#222326', roughness: 0.52 },
-      white:  { map: null, color: '#F6F6F3', roughness: 0.78 }
+      oak:    { map: woodTex?.map, normalMap: woodTex?.normalMap, roughnessMap: woodTex?.roughnessMap, color: '#FFFFFF', roughness: 1.0 },
+      walnut: { map: woodTex?.map, normalMap: woodTex?.normalMap, roughnessMap: woodTex?.roughnessMap, color: '#FFFFFF', roughness: 1.0 },
+      black:  { map: null, normalMap: null, roughnessMap: null, color: '#222326', roughness: 0.52 },
+      white:  { map: null, normalMap: null, roughnessMap: null, color: '#F6F6F3', roughness: 0.78 }
     };
     const f = finMap[finishKey] || finMap.oak;
-    const mat = new THREE.MeshStandardMaterial({ map: f.map, color: f.color, roughness: f.roughness });
+    const mat = new THREE.MeshStandardMaterial({
+      map: f.map,
+      normalMap: f.normalMap,
+      roughnessMap: f.roughnessMap,
+      color: f.color,
+      roughness: f.roughness
+    });
 
     const cH = heightMode === 'full' ? (CEIL_Y - HALF_WALL_H) : 0.72;
     const startX = EAST_X - HALF_WALL_LEN + 0.08;
@@ -341,21 +390,27 @@ export class KitchenBuilder {
     const span = endX - startX;
     const slatCount = Math.floor(span / 0.085);
 
-    // Bottom & top rails
-    const botRail = new THREE.Mesh(new THREE.BoxGeometry(span, 0.032, 0.065), mat);
+    const botRail = new THREE.Mesh(new RoundedBoxGeometry(span, 0.032, 0.065, 2, 0.003), mat);
     botRail.position.set((startX + endX) / 2, HALF_WALL_H + 0.016, HALF_WALL_Z);
-    const topRail = new THREE.Mesh(new THREE.BoxGeometry(span, 0.032, 0.065), mat);
+    const topRail = new THREE.Mesh(new RoundedBoxGeometry(span, 0.032, 0.065, 2, 0.003), mat);
     topRail.position.set((startX + endX) / 2, HALF_WALL_H + cH - 0.016, HALF_WALL_Z);
     this.claustraGroup.add(botRail, topRail);
 
-    // Vertical architectural slats
+    // Instanced vertical architectural slats (1 draw call instead of ~25!)
+    const slatGeo = new RoundedBoxGeometry(0.032, cH - 0.03, 0.062, 2, 0.003);
+    const inst = new THREE.InstancedMesh(slatGeo, mat, slatCount + 1);
+    inst.castShadow = true;
+    inst.receiveShadow = true;
+    inst.userData.clickableKitchen = true;
+    const dummy = new THREE.Object3D();
     for (let i = 0; i <= slatCount; i++) {
       const sx = startX + (span * i) / slatCount;
-      const slat = new THREE.Mesh(new THREE.BoxGeometry(0.032, cH - 0.03, 0.062), mat);
-      slat.position.set(sx, HALF_WALL_H + cH / 2, HALF_WALL_Z);
-      slat.castShadow = true;
-      this.claustraGroup.add(slat);
+      dummy.position.set(sx, HALF_WALL_H + cH / 2, HALF_WALL_Z);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
     }
+    inst.instanceMatrix.needsUpdate = true;
+    this.claustraGroup.add(inst);
   }
 
   applyDoor(doorId) {
@@ -379,9 +434,13 @@ export class KitchenBuilder {
   applyCountertop(ctId) {
     const def = COUNTERTOPS.find(c => c.id === ctId) || COUNTERTOPS[4];
     this.currentState.countertopId = def.id;
-    this.countertopMat.map = getCountertopTexture(def);
+    const pbr = getCountertopPbrTextures(def);
+    this.countertopMat.map = pbr.map;
+    this.countertopMat.normalMap = pbr.normalMap || null;
+    this.countertopMat.normalScale = new THREE.Vector2(0.32, 0.32);
+    this.countertopMat.roughnessMap = pbr.roughnessMap || null;
     this.countertopMat.color.set('#FFFFFF');
-    this.countertopMat.roughness = def.roughness;
+    this.countertopMat.roughness = pbr.roughnessMap ? 1.0 : def.roughness;
     this.countertopMat.metalness = def.metalness;
     this.countertopMat.needsUpdate = true;
     this._rebuildCountertops(def);
@@ -392,11 +451,16 @@ export class KitchenBuilder {
     this.currentState.backsplash = mode;
     if (mode === 'matching') {
       const ctDef = COUNTERTOPS.find(c => c.id === this.currentState.countertopId) || COUNTERTOPS[4];
-      this.backsplashMat.map = getCountertopTexture(ctDef);
+      const pbr = getCountertopPbrTextures(ctDef);
+      this.backsplashMat.map = pbr.map;
+      this.backsplashMat.normalMap = pbr.normalMap || null;
       this.backsplashMat.roughness = ctDef.roughness;
     } else {
-      this.backsplashMat.map = getBacksplashTexture(mode);
-      this.backsplashMat.roughness = mode === 'subway' ? 0.35 : 0.85;
+      const pbr = getBacksplashPbrTextures(mode);
+      this.backsplashMat.map = pbr.map;
+      this.backsplashMat.normalMap = pbr.normalMap || null;
+      this.backsplashMat.normalScale = new THREE.Vector2(0.5, 0.5);
+      this.backsplashMat.roughness = mode === 'subway' ? 0.32 : 0.85;
     }
     this.backsplashMat.color.set('#FFFFFF');
     this.backsplashMat.needsUpdate = true;
@@ -406,8 +470,8 @@ export class KitchenBuilder {
     this.currentState.hardware = mode;
     const cfg = {
       black: { color: '#1E1F22', roughness: 0.34, metalness: 0.65 },
-      brass: { color: '#C8A156', roughness: 0.28, metalness: 0.86 },
-      steel: { color: '#C9CDD2', roughness: 0.24, metalness: 0.88 }
+      brass: { color: '#C8A156', roughness: 0.24, metalness: 0.90 },
+      steel: { color: '#CFD4D9', roughness: 0.18, metalness: 0.92 }
     }[mode] || { color: '#1E1F22', roughness: 0.34, metalness: 0.65 };
     this.hardwareMat.color.set(cfg.color);
     this.hardwareMat.roughness = cfg.roughness;

@@ -1,18 +1,19 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { WOOD_FINISHES } from '../catalogs/materials.js';
-import { getWoodTexture, getFabricTexture } from './textures.js';
+import { getWoodPbrTextures, getFabricPbrTextures } from './textures.js';
+import { saveGlbBuffer, loadGlbBuffer } from '../storage/glbStore.js';
 
 /* =========================================================================
  * PHASE 2 RICH MULTI-PART 3D COMPONENT BUILDER + GLB/GLTF MODEL LOADER
  * Renders declarative JSON Schema v2 (`parts[]`) from either:
  * - Built-in Designer Recipes (zero API key, instant)
  * - Live Gemini / OpenAI LLM JSON-to-3D generation (BYOK)
- * - Imported .glb / .gltf 3D models (IKEA, SketchUp, Tripo3D, Meshy, etc.)
+ * - Imported .glb / .gltf 3D models (persisted in IndexedDB!)
  * ========================================================================= */
 
 const gltfLoader = new GLTFLoader();
-const glbCache = new Map(); // uid/dataUrl -> parsed GLTF scene
+const glbCache = new Map(); // glbId -> parsed GLTF scene
 
 function buildPbrMaterial(matSpec = {}) {
   const type = matSpec.type || 'matte';
@@ -21,45 +22,52 @@ function buildPbrMaterial(matSpec = {}) {
   if (type === 'wood') {
     const fk = (matSpec.finish && WOOD_FINISHES[matSpec.finish]) ? matSpec.finish : 'walnut';
     const wf = WOOD_FINISHES[fk];
+    const pbr = fk === 'white' ? null : getWoodPbrTextures(fk, 1.5, 1.2);
     return new THREE.MeshStandardMaterial({
-      map: fk === 'white' ? null : getWoodTexture(fk, 1.5, 1.2),
+      map: pbr ? pbr.map : null,
+      normalMap: pbr ? pbr.normalMap : null,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      roughnessMap: pbr ? pbr.roughnessMap : null,
       color: fk === 'white' ? wf.hex : '#FFFFFF',
-      roughness: wf.roughness,
+      roughness: pbr ? 1.0 : wf.roughness,
       metalness: 0.0,
-      envMapIntensity: 0.32
+      envMapIntensity: 0.38
     });
   }
   if (type === 'fabric') {
+    const pbr = getFabricPbrTextures(color, 3, 3);
     return new THREE.MeshStandardMaterial({
-      map: getFabricTexture(color, 3, 3),
+      map: pbr.map,
+      normalMap: pbr.normalMap,
+      normalScale: new THREE.Vector2(0.45, 0.45),
       color: '#FFFFFF',
       roughness: 0.92,
       metalness: 0.0,
-      envMapIntensity: 0.18
+      envMapIntensity: 0.20
     });
   }
   if (type === 'metal') {
     return new THREE.MeshStandardMaterial({
       color,
-      roughness: matSpec.roughness ?? 0.28,
-      metalness: 0.86,
-      envMapIntensity: 0.85
+      roughness: matSpec.roughness ?? 0.24,
+      metalness: 0.90,
+      envMapIntensity: 0.95
     });
   }
   if (type === 'marble') {
     return new THREE.MeshStandardMaterial({
       color: color || '#F3F1EC',
-      roughness: 0.18,
+      roughness: 0.16,
       metalness: 0.03,
-      envMapIntensity: 0.55
+      envMapIntensity: 0.60
     });
   }
   if (type === 'mirror') {
     return new THREE.MeshStandardMaterial({
-      color: '#DCE5EB',
-      roughness: 0.05,
-      metalness: 0.95,
-      envMapIntensity: 1.0
+      color: '#F0F4F6',
+      roughness: 0.015,
+      metalness: 1.0,
+      envMapIntensity: 1.2
     });
   }
   if (type === 'glass') {
@@ -336,22 +344,16 @@ export function buildRichComponentMesh(item) {
   return g;
 }
 
-/**
- * Loads a user-imported .GLB / .GLTF file (ArrayBuffer or ObjectURL) into a normalized Group!
- */
-export async function parseGlbFile(file) {
-  const buf = await file.arrayBuffer();
+function parseGlbArrayBuffer(buf, cacheId) {
   return new Promise((resolve, reject) => {
     gltfLoader.parse(buf, '', (gltf) => {
       const root = gltf.scene;
-      // Compute bounding box & normalize floor alignment (y=0)
       const box = new THREE.Box3().setFromObject(root);
       const size = new THREE.Vector3();
       const center = new THREE.Vector3();
       box.getSize(size);
       box.getCenter(center);
 
-      // Auto-convert cm/mm exports if model is huge (> 6m) or tiny (< 0.05m)
       let scale = 1.0;
       const maxDim = Math.max(size.x, size.y, size.z);
       if (maxDim > 8) scale = 1.0 / (maxDim > 80 ? 100 : 10);
@@ -365,7 +367,6 @@ export async function parseGlbFile(file) {
       box2.getSize(size2);
       box2.getCenter(center2);
 
-      // Center XZ at 0 and sit bottom cleanly on floor y=0
       root.position.x -= center2.x;
       root.position.z -= center2.z;
       root.position.y -= box2.min.y;
@@ -377,7 +378,6 @@ export async function parseGlbFile(file) {
         }
       });
 
-      const cacheId = `glb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       glbCache.set(cacheId, root);
       resolve({
         glbId: cacheId,
@@ -387,6 +387,35 @@ export async function parseGlbFile(file) {
       });
     }, reject);
   });
+}
+
+/**
+ * Loads a user-imported .GLB / .GLTF file and persists its binary buffer in IndexedDB!
+ */
+export async function parseGlbFile(file) {
+  const buf = await file.arrayBuffer();
+  const cacheId = `glb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const meta = await parseGlbArrayBuffer(buf.slice(0), cacheId);
+  await saveGlbBuffer(cacheId, buf);
+  return meta;
+}
+
+/**
+ * Rehydrates persisted .GLB models from IndexedDB on page boot.
+ */
+export async function hydrateGlbCache(items = []) {
+  const glbItems = items.filter(it => it && it.kind === 'customGlb' && it.glbId && !glbCache.has(it.glbId));
+  let loaded = 0;
+  for (const it of glbItems) {
+    try {
+      const buf = await loadGlbBuffer(it.glbId);
+      if (buf) {
+        await parseGlbArrayBuffer(buf, it.glbId);
+        loaded++;
+      }
+    } catch (_) {}
+  }
+  return loaded;
 }
 
 export function buildGlbItemMesh(item) {
@@ -399,10 +428,9 @@ export function buildGlbItemMesh(item) {
     }
     g.add(clone);
   } else {
-    // Graceful placeholder if page reloaded (browser can't keep huge binary GLB in localStorage)
     const ph = new THREE.Mesh(
       new THREE.BoxGeometry(item.w || 0.8, item.h || 0.8, item.d || 0.6),
-      new THREE.MeshStandardMaterial({ color: '#B5A898', roughness: 0.7, wireframe: false })
+      new THREE.MeshStandardMaterial({ color: '#B5A898', roughness: 0.7 })
     );
     ph.position.y = (item.h || 0.8) / 2;
     g.add(ph);

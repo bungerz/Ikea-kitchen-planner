@@ -6,43 +6,52 @@ import {
   ShapedAreaLight
 } from 'three-gpu-pathtracer';
 
-/**
- * Hardware-tuned WebGL2 GPU Path Tracing profiles:
- * Tuned for NVIDIA RTX 3070 (fast 12–20 spp/sec, silky orbiting via dynamicLowRes) & mobile GPUs.
- */
+/* =========================================================================
+ * OVERHAULED WEBGL2 GPU PATH TRACER ("PHOTO RENDER" STUDIO)
+ * Key fixes over v1:
+ * 1. Removed flat indoor softbox window portals that washed out sun shafts
+ * 2. 1024x512 physically-scaled Ambilly HDRI sky with baked Mont Salève /
+ *    Jura / Voirons Alpine skyline + high-contrast solar disc (~7x sun/sky)
+ * 3. Higher interior bounce depth (5 -> 6 -> 8 bounces) & crisp speculars
+ * 4. Sharpness-preserving Firefly-Guard + Adaptive Edge-Stopping À-Trous
+ *    Denoiser (ZERO permanent 3x3 box blur!)
+ * 5. Live Exposure EV (-1.2..+1.2), Denoise Mode (Off/Subtle/Smooth), and
+ *    Interior Lamps (Auto/On/Off) without resetting converged renders!
+ * ========================================================================= */
+
 export const RT_PROFILES = {
-  mobile: {
-    key: 'mobile',
-    label: 'Fast',
-    renderScale: 0.65,
+  fast: {
+    key: 'fast',
+    label: 'Fast Preview',
+    renderScale: 0.72,
     tiles: [2, 2],
-    bounces: 3,
-    targetSamples: 64,
+    bounces: 5,
+    targetSamples: 96,
     textureSize: 512,
-    filterGlossyFactor: 0.65,
+    filterGlossyFactor: 0.28,
     maxDpr: 1.25
   },
   balanced: {
     key: 'balanced',
     label: 'Balanced',
-    renderScale: 0.78,
+    renderScale: 0.86,
     tiles: [2, 1],
-    bounces: 4,
-    targetSamples: 128,
-    textureSize: 512,
-    filterGlossyFactor: 0.55,
-    maxDpr: 1.35
-  },
-  ultra: {
-    key: 'ultra',
-    label: 'RTX Ultra',
-    renderScale: 0.88,
-    tiles: [1, 1],
-    bounces: 4,
-    targetSamples: 160,
+    bounces: 6,
+    targetSamples: 192,
     textureSize: 1024,
-    filterGlossyFactor: 0.45,
+    filterGlossyFactor: 0.20,
     maxDpr: 1.5
+  },
+  photo: {
+    key: 'photo',
+    label: 'Studio Photo',
+    renderScale: 1.0,
+    tiles: [1, 1],
+    bounces: 8,
+    targetSamples: 384,
+    textureSize: 1024,
+    filterGlossyFactor: 0.14,
+    maxDpr: 1.75
   }
 };
 
@@ -71,28 +80,29 @@ export function detectGpuProfile(renderer) {
   else if (adrenoMatch) gpuLabel = adrenoMatch[0].replace(/\(TM\)\s*/i, '').trim();
   else if (appleMatch) gpuLabel = appleMatch[0].trim();
   else if (/MALI/i.test(raw)) gpuLabel = 'ARM Mali GPU';
-  else if (/XCLIPSE/i.test(raw)) gpuLabel = 'Samsung Xclipse';
   else if (/SWIFTSHADER|LLVMPIPE|SOFTWARE/i.test(upper)) gpuLabel = 'Software WebGL';
   else if (raw) gpuLabel = raw.replace(/^ANGLE\s*\([^,]+,\s*/i, '').split(/[(),]/)[0].trim().slice(0, 22);
 
   if (/SWIFTSHADER|LLVMPIPE|SOFTWARE/i.test(upper)) {
-    return { profileKey: 'mobile', gpuLabel, isSoftware: true };
+    return { profileKey: 'fast', gpuLabel, isSoftware: true };
   }
   if (isMobileUa || isCoarse || /ADRENO|MALI|XCLIPSE|IMMORTALIS|POWERVR/i.test(upper)) {
-    return { profileKey: 'mobile', gpuLabel, isSoftware: false };
+    return { profileKey: 'fast', gpuLabel, isSoftware: false };
   }
   if (/RTX|RADEON RX\s*[6789]|ARC\s*[AB]\d|M[2-9]\s*(?:PRO|MAX|ULTRA)|TITAN|QUADRO|GTX\s*1080|GTX\s*1660/i.test(upper)) {
-    return { profileKey: 'ultra', gpuLabel, isSoftware: false };
+    return { profileKey: 'balanced', gpuLabel, isSoftware: false };
   }
   return { profileKey: 'balanced', gpuLabel, isSoftware: false };
 }
 
 /**
- * Guided Perceptual Edge-Preserving Bilateral Denoiser (NaN-proof & Firefly-resistant!).
- * Computes a local 3x3 guide mean before bilateral edge weighting so isolated Monte Carlo
- * salt-and-pepper pixels on flat walls/sofas smooth out cleanly while real wood/wall edges stay crisp!
+ * Sharpness-Preserving Firefly Guard + Edge-Stopping À-Trous Denoiser + Live Exposure EV.
+ * - Never pre-blurs with a 3x3 box filter!
+ * - Clamps statistical firefly spikes (> 2.8x local neighborhood median luminance) only.
+ * - Anchors edge-stopping bilateral weights on the unblurred pixel so wood grain,
+ *   tile grout, and cabinet bevels stay crisp!
  */
-function createSafeBilateralDenoiseMaterial() {
+function createSharpDenoiseDisplayMaterial() {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
@@ -101,9 +111,10 @@ function createSafeBilateralDenoiseMaterial() {
     uniforms: {
       map: { value: null },
       opacity: { value: 1.0 },
-      sigma: { value: 3.2 },
-      threshold: { value: 0.28 },
-      radius: { value: 4.0 }
+      exposureMult: { value: 1.0 },
+      denoiseStrength: { value: 0.5 }, // 0.0 = raw (+firefly guard), 0.5 = subtle, 1.0 = smooth
+      colorSigma: { value: 0.16 },
+      stepSize: { value: 1.0 }
     },
     vertexShader: /* glsl */`
       varying vec2 vUv;
@@ -115,64 +126,102 @@ function createSafeBilateralDenoiseMaterial() {
     fragmentShader: /* glsl */`
       uniform sampler2D map;
       uniform float opacity;
-      uniform float sigma;
-      uniform float threshold;
-      uniform float radius;
+      uniform float exposureMult;
+      uniform float denoiseStrength;
+      uniform float colorSigma;
+      uniform float stepSize;
       varying vec2 vUv;
 
-      vec3 safeSample(vec2 uv) {
-        vec3 c = texture2D(map, uv).rgb;
-        if (any(isnan(c)) || any(isinf(c))) return vec3(0.0);
-        return clamp(c, vec3(0.0), vec3(6.0));
+      float luma(vec3 c) {
+        return dot(c, vec3(0.2126, 0.7152, 0.0722));
       }
 
-      vec3 toPerceptual(vec3 c) {
-        return sqrt(c / (vec3(1.0) + c));
+      vec3 safeSample(vec2 uv) {
+        vec3 c = texture2D(map, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
+        if (any(isnan(c)) || any(isinf(c))) return vec3(0.0);
+        return max(c, vec3(0.0));
+      }
+
+      // Perceptual log-compression for edge comparison (preserves shadow & highlight edges equally)
+      vec3 toLogP(vec3 c) {
+        return log(vec3(1.0) + max(c, vec3(0.0)) * 2.5);
       }
 
       void main() {
         vec2 texSize = vec2(textureSize(map, 0));
         vec2 invSize = 1.0 / max(texSize, vec2(1.0));
 
-        // Step 1: Build a noise-free 3x3 local guide color so isolated salt-and-pepper
-        // pixels are NEVER mistaken for real geometric edges!
-        vec3 guideSum = vec3(0.0);
+        vec3 center = safeSample(vUv);
+
+        // Step 1: Firefly-only outlier suppressor (3x3 neighborhood trimmed mean)
+        // Touches ONLY isolated extreme hot spikes (> 2.8x neighbor average)
+        vec3 nSum = vec3(0.0);
+        float maxLum = 0.0;
+        vec3 maxCol = vec3(0.0);
         for (int gx = -1; gx <= 1; gx++) {
           for (int gy = -1; gy <= 1; gy++) {
-            guideSum += safeSample(vUv + vec2(float(gx), float(gy)) * invSize);
+            if (gx == 0 && gy == 0) continue;
+            vec3 nc = safeSample(vUv + vec2(float(gx), float(gy)) * invSize);
+            float nl = luma(nc);
+            nSum += nc;
+            if (nl > maxLum) {
+              maxLum = nl;
+              maxCol = nc;
+            }
           }
         }
-        vec3 guideCol = guideSum / 9.0;
-        vec3 guideP = toPerceptual(guideCol);
-
-        // Step 2: Edge-preserving bilateral filter guided by guideP
-        float invSigma2 = 0.5 / max(sigma * sigma, 0.01);
-        float invThresh2 = 0.5 / max(threshold * threshold, 0.005);
-
-        vec3 accum = guideCol * 0.5;
-        float weightSum = 0.5;
-
-        int r = int(clamp(radius, 1.0, 5.0));
-        for (int dx = -5; dx <= 5; dx++) {
-          if (dx < -r || dx > r) continue;
-          for (int dy = -5; dy <= 5; dy++) {
-            if (dy < -r || dy > r) continue;
-            vec2 offset = vec2(float(dx), float(dy));
-            float dist2 = dot(offset, offset);
-            if (dist2 > radius * radius) continue;
-
-            vec3 sCol = safeSample(vUv + offset * invSize);
-            vec3 diff = toPerceptual(sCol) - guideP;
-            float wSpatial = exp(-dist2 * invSigma2);
-            float wColor = exp(-dot(diff, diff) * invThresh2);
-            float w = wSpatial * wColor;
-
-            accum += sCol * w;
-            weightSum += w;
-          }
+        // Drop the brightest neighbor to resist double-fireflies
+        vec3 trimMean = (nSum - maxCol) / 7.0;
+        float trimLum = luma(trimMean);
+        float cLum = luma(center);
+        if (cLum > trimLum * 2.8 + 0.35) {
+          float targetLum = trimLum * 2.2 + 0.25;
+          center *= targetLum / max(cLum, 1e-4);
         }
 
-        gl_FragColor = vec4(accum / max(weightSum, 1e-5), 1.0);
+        vec3 finalCol = center;
+
+        // Step 2: Sharpness-preserving 5x5 À-Trous edge-stopping filter anchored on sharp center
+        if (denoiseStrength > 0.01) {
+          vec3 centerP = toLogP(center);
+          float invColor2 = 0.5 / max(colorSigma * colorSigma, 0.002);
+
+          // 1D B-spline à-trous kernel weights: [1/16, 1/4, 3/8, 1/4, 1/16]
+          float kw[5];
+          kw[0] = 0.0625;
+          kw[1] = 0.25;
+          kw[2] = 0.375;
+          kw[3] = 0.25;
+          kw[4] = 0.0625;
+
+          vec3 accum = vec3(0.0);
+          float wSum = 0.0;
+
+          for (int dx = -2; dx <= 2; dx++) {
+            float wx = kw[dx + 2];
+            for (int dy = -2; dy <= 2; dy++) {
+              float wy = kw[dy + 2];
+              vec2 off = vec2(float(dx), float(dy)) * stepSize * invSize;
+              vec3 sCol = (dx == 0 && dy == 0) ? center : safeSample(vUv + off);
+              // Clamp neighbor fireflies too so they never bleed into neighbors
+              float sLum = luma(sCol);
+              if (sLum > trimLum * 3.0 + 0.45) {
+                sCol *= (trimLum * 2.4 + 0.30) / max(sLum, 1e-4);
+              }
+              vec3 diff = toLogP(sCol) - centerP;
+              float wColor = exp(-dot(diff, diff) * invColor2);
+              float w = wx * wy * wColor;
+              accum += sCol * w;
+              wSum += w;
+            }
+          }
+
+          vec3 denoised = accum / max(wSum, 1e-5);
+          finalCol = mix(center, denoised, clamp(denoiseStrength, 0.0, 1.0));
+        }
+
+        // Apply live EV exposure trim BEFORE AgX tone mapping & sRGB encoding!
+        gl_FragColor = vec4(finalCol * exposureMult, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
         gl_FragColor.a = opacity;
@@ -182,10 +231,12 @@ function createSafeBilateralDenoiseMaterial() {
 }
 
 /**
- * Generates a physically-based HDR equirectangular sky synchronized to Ambilly's live NOAA sun!
+ * Generates a 1024x512 physically-scaled HDR equirectangular sky synchronized
+ * to Ambilly's live NOAA sun — WITH baked Mont Salève (SSW), Jura (NW), and
+ * Voirons (E) mountain horizons so windows show a real sunlit skyline in RT!
  */
 function buildAmbillyHdrEnv(sunData, d65Override = false) {
-  const tex = new ProceduralEquirectTexture(256, 128);
+  const tex = new ProceduralEquirectTexture(1024, 512);
   const sunDir = (sunData?.dir || new THREE.Vector3(-0.5, 0.5, 0.7)).clone().normalize();
   const dir = new THREE.Vector3();
 
@@ -193,6 +244,19 @@ function buildAmbillyHdrEnv(sunData, d65Override = false) {
   const horizon = sunData?.skyHorizon || new THREE.Color('#E0EBF5');
   const sunCol = sunData?.sunColor || new THREE.Color('#FFF4DE');
   const isNight = Boolean(sunData?.isNight) && !d65Override;
+  const isTwilight = Boolean(sunData?.isTwilight) && !d65Override;
+
+  // Approximate Alpine ridge elevation angle (radians) around azimuth atan2(x, z)
+  const alpineRidgeHeight = (dx, dz) => {
+    const az = Math.atan2(dx, dz); // 0 = +Z (SSW Loggia/Salève), -PI/2 = -X (WNW Jura), +PI/2 = +X (ESE Voirons)
+    // Mont Salève broad flat-topped ridge toward +Z (az around -0.25..+0.45)
+    const saleve = Math.exp(-Math.pow((az - 0.05) / 0.58, 2)) * 0.135 * (0.85 + 0.15 * Math.cos(az * 7.0));
+    // Massif du Jura gentle blue ridge toward -X/-Z (az around -2.1)
+    const jura = Math.exp(-Math.pow((az + 2.0) / 0.75, 2)) * 0.085 * (0.8 + 0.2 * Math.sin(az * 9.0));
+    // Les Voirons toward +X (az around +1.6)
+    const voirons = Math.exp(-Math.pow((az - 1.55) / 0.65, 2)) * 0.10 * (0.8 + 0.2 * Math.cos(az * 6.0));
+    return Math.max(saleve, jura, voirons);
+  };
 
   tex.generationCallback = (polar, _uv, _coord, color) => {
     dir.setFromSpherical(polar);
@@ -200,37 +264,65 @@ function buildAmbillyHdrEnv(sunData, d65Override = false) {
     const down = Math.max(0, -dir.y);
 
     if (d65Override) {
-      const v = Math.max(0.32, 0.90 + 0.35 * up - 0.30 * down);
+      const v = Math.max(0.38, 1.05 + 0.45 * up - 0.32 * down);
       color.setRGB(v, v, v);
       return;
     }
 
     if (isNight) {
-      const r = 0.03 + 0.02 * (1 - up) + 0.02 * down;
-      const g = 0.04 + 0.025 * (1 - up) + 0.02 * down;
-      const b = 0.08 + 0.04 * (1 - up) + 0.02 * down;
+      const r = 0.02 + 0.015 * (1 - up) + 0.015 * down;
+      const g = 0.028 + 0.02 * (1 - up) + 0.015 * down;
+      const b = 0.055 + 0.03 * (1 - up) + 0.015 * down;
       color.setRGB(r, g, b);
       return;
     }
 
-    const k = Math.pow(up, 0.55);
-    let r = THREE.MathUtils.lerp(horizon.r, zenith.r, k) * 1.25;
-    let g = THREE.MathUtils.lerp(horizon.g, zenith.g, k) * 1.25;
-    let b = THREE.MathUtils.lerp(horizon.b, zenith.b, k) * 1.25;
+    // Physical sky dome luminance (boosted naturally so daylight fills rooms via real windows!)
+    const skyScale = isTwilight ? 1.05 : 1.75;
+    const k = Math.pow(up, 0.52);
+    let r = THREE.MathUtils.lerp(horizon.r, zenith.r, k) * skyScale;
+    let g = THREE.MathUtils.lerp(horizon.g, zenith.g, k) * skyScale;
+    let b = THREE.MathUtils.lerp(horizon.b, zenith.b, k) * skyScale;
 
-    if (down > 0) {
-      const gd = Math.min(1, down * 2.5);
-      r = THREE.MathUtils.lerp(r, 0.38, gd);
-      g = THREE.MathUtils.lerp(g, 0.36, gd);
-      b = THREE.MathUtils.lerp(b, 0.33, gd);
+    // Subtle sunlit cumulus cloud wisps in upper sky for organic window reflections
+    if (dir.y > 0.08) {
+      const cx = dir.x / (dir.y + 0.25);
+      const cz = dir.z / (dir.y + 0.25);
+      const cloud = Math.max(0, Math.sin(cx * 1.4 + 0.7) * Math.cos(cz * 1.1 - 0.4) * 0.5 + 0.18);
+      const fade = Math.min(1, (dir.y - 0.08) * 3.0) * (1 - up * 0.45);
+      const cBoost = cloud * fade * (isTwilight ? 0.22 : 0.35);
+      r += cBoost * sunCol.r;
+      g += cBoost * sunCol.g;
+      b += cBoost * sunCol.b;
     }
 
-    // Smooth solar glow (capped to avoid harsh fireflies on diffuse interior bounces!)
+    // Baked Alpine Horizon Silhouette (Mont Salève / Jura / Voirons) & Écoquartier Ground Bounce
+    const ridgeH = alpineRidgeHeight(dir.x, dir.z);
+    if (dir.y >= -0.02 && dir.y < ridgeH) {
+      const blend = THREE.MathUtils.smoothstep(dir.y, ridgeH - 0.018, ridgeH);
+      const mtR = THREE.MathUtils.lerp(0.36, horizon.r * 0.85, 0.52);
+      const mtG = THREE.MathUtils.lerp(0.42, horizon.g * 0.85, 0.52);
+      const mtB = THREE.MathUtils.lerp(0.50, horizon.b * 0.90, 0.55);
+      r = THREE.MathUtils.lerp(mtR, r, blend);
+      g = THREE.MathUtils.lerp(mtG, g, blend);
+      b = THREE.MathUtils.lerp(mtB, b, blend);
+    } else if (down > 0) {
+      // Warm sunlit limestone/courtyard ground bounce below the 4th floor
+      const gd = Math.min(1, down * 3.0);
+      const bounceScale = isTwilight ? 0.35 : 0.62;
+      r = THREE.MathUtils.lerp(r, 0.56 * bounceScale, gd);
+      g = THREE.MathUtils.lerp(g, 0.53 * bounceScale, gd);
+      b = THREE.MathUtils.lerp(b, 0.46 * bounceScale, gd);
+    }
+
+    // Physically-proportioned solar halo + bright HDR sun disc (creates warm sun shafts!)
     const sunDot = Math.max(0, dir.dot(sunDir));
-    const halo = Math.pow(sunDot, 16.0) * 1.8 + Math.pow(sunDot, 120.0) * 5.5;
-    r += sunCol.r * halo;
-    g += sunCol.g * halo;
-    b += sunCol.b * halo;
+    const halo = Math.pow(sunDot, 14.0) * 1.2 + Math.pow(sunDot, 96.0) * 5.0;
+    // Soft ~1.6° solar disc for crisp-yet-natural architectural sun shadows without harsh fireflies
+    const disc = THREE.MathUtils.smoothstep(sunDot, 0.9990, 0.9997) * (isTwilight ? 10.0 : 28.0);
+    r += sunCol.r * (halo + disc);
+    g += sunCol.g * (halo + disc);
+    b += sunCol.b * (halo + disc);
 
     color.setRGB(r, g, b);
   };
@@ -240,7 +332,7 @@ function buildAmbillyHdrEnv(sunData, d65Override = false) {
 }
 
 /**
- * Full-Apartment On-Demand WebGL2 GPU Path Tracing Engine (RTX 3070 + Mobile Tuned).
+ * Full-Apartment On-Demand WebGL2 GPU Path Tracing Studio Engine.
  */
 export class KitchenRayTracer {
   constructor({ renderer, scene, camera, controls, lightRefs, constants }) {
@@ -253,7 +345,9 @@ export class KitchenRayTracer {
 
     this.active = false;
     this.paused = false;
-    this.denoiseEnabled = true;
+    this.denoiseMode = 'subtle'; // 'off' | 'subtle' | 'smooth'
+    this.exposureEv = 0.0;       // -1.2 .. +1.2 EV live trim without resetting samples!
+    this.lampsMode = 'auto';     // 'auto' | 'on' | 'off'
     this.initialized = false;
     this.needsRebuild = false;
     this.needsMaterialsUpdate = false;
@@ -272,13 +366,18 @@ export class KitchenRayTracer {
     this._hiddenMeshes = [];
     this._hdrEnvTex = null;
     this._rtLightsGroup = null;
-    this._rtWindowLights = [];
     this._rtBackLedLight = null;
     this._rtLeftLedLight = null;
     this._rtPendantLights = [];
+    this._rtSconceLights = [];
 
     this._pathTracer = null;
-    this._denoiseQuad = null;
+    this._displayQuad = null;
+
+    // Samples/sec telemetry
+    this._rateStartTs = 0;
+    this._rateStartSamples = 0;
+    this.samplesPerSec = 0;
   }
 
   _ensureInitialized() {
@@ -286,113 +385,84 @@ export class KitchenRayTracer {
 
     this._pathTracer = new WebGLPathTracer(this.renderer);
     this._pathTracer.multipleImportanceSampling = true;
-    this._pathTracer.transmissiveBounces = 2;
-    this._pathTracer.renderDelay = 35;
+    this._pathTracer.transmissiveBounces = 4;
+    this._pathTracer.renderDelay = 30;
     this._pathTracer.minSamples = 1;
-    this._pathTracer.fadeDuration = 120;
+    this._pathTracer.fadeDuration = 90;
     this._pathTracer.rasterizeScene = true;
     this._pathTracer.dynamicLowRes = true;
     this._pathTracer.lowResScale = 0.45;
     this._pathTracer.synchronizeRenderSize = true;
 
-    this._denoiseQuad = new FullScreenQuad(createSafeBilateralDenoiseMaterial());
+    this._displayQuad = new FullScreenQuad(createSharpDenoiseDisplayMaterial());
 
     this._pathTracer.renderToCanvasCallback = (target, renderer, quad) => {
       const currentAutoClear = renderer.autoClear;
       renderer.autoClear = false;
 
       const samples = this._pathTracer.samples;
-      if (this.denoiseEnabled && samples >= 2) {
-        const dMat = this._denoiseQuad.material;
-        dMat.uniforms.map.value = target.texture;
-        dMat.uniforms.opacity.value = quad.material.opacity;
-        dMat.blending = quad.material.opacity < 1 ? THREE.NormalBlending : THREE.NoBlending;
+      const dMat = this._displayQuad.material;
+      dMat.uniforms.map.value = target.texture;
+      dMat.uniforms.opacity.value = quad.material.opacity;
+      dMat.uniforms.exposureMult.value = Math.pow(2.0, this.exposureEv);
+      dMat.blending = quad.material.opacity < 1 ? THREE.NormalBlending : THREE.NoBlending;
 
-        // Smooth adaptive guided denoising: clean magazine-grade GI even at 15–50 samples!
-        if (samples < 20) {
-          dMat.uniforms.radius.value = 5.0;
-          dMat.uniforms.sigma.value = 4.0;
-          dMat.uniforms.threshold.value = 0.36;
-        } else if (samples < 60) {
-          dMat.uniforms.radius.value = 4.0;
-          dMat.uniforms.sigma.value = 3.0;
-          dMat.uniforms.threshold.value = 0.28;
-        } else if (samples < 120) {
-          dMat.uniforms.radius.value = 3.0;
-          dMat.uniforms.sigma.value = 2.2;
-          dMat.uniforms.threshold.value = 0.22;
-        } else {
-          dMat.uniforms.radius.value = 2.0;
-          dMat.uniforms.sigma.value = 1.6;
-          dMat.uniforms.threshold.value = 0.16;
-        }
-        this._denoiseQuad.render(renderer);
+      // Adaptive sharpness-preserving denoise tapering cleanly as samples converge!
+      if (this.denoiseMode === 'off' || samples < 2) {
+        dMat.uniforms.denoiseStrength.value = 0.0;
+      } else if (this.denoiseMode === 'subtle') {
+        const taper = samples < 24 ? 0.72 : samples < 80 ? 0.50 : samples < 180 ? 0.30 : 0.14;
+        dMat.uniforms.denoiseStrength.value = taper;
+        dMat.uniforms.colorSigma.value = samples < 40 ? 0.22 : 0.13;
+        dMat.uniforms.stepSize.value = samples < 30 ? 2.0 : 1.0;
       } else {
-        quad.render(renderer);
+        // 'smooth'
+        const taper = samples < 30 ? 0.92 : samples < 100 ? 0.74 : samples < 200 ? 0.52 : 0.32;
+        dMat.uniforms.denoiseStrength.value = taper;
+        dMat.uniforms.colorSigma.value = samples < 40 ? 0.30 : 0.19;
+        dMat.uniforms.stepSize.value = samples < 50 ? 2.0 : 1.0;
       }
 
+      this._displayQuad.render(renderer);
       renderer.autoClear = currentAutoClear;
     };
 
-    this._buildPhysicalAreaLights();
+    this._buildPhysicalInteriorLights();
     this._applyProfileSettings(this.profileKey, false);
     this.initialized = true;
   }
 
-  _buildPhysicalAreaLights() {
+  _buildPhysicalInteriorLights() {
     const grp = new THREE.Group();
-    grp.name = 'RTPhysicalLights';
+    grp.name = 'RTPhysicalInteriorLights';
 
-    // Exact UN-OCCLUDED Window Portal Area Lights positioned cleanly INSIDE each opening!
-    // Remember: RectAreaLight emits strictly along local -Z!
-    //   rotY = 0         -> emits North (-Z)
-    //   rotY = -Math.PI/2 -> emits East (+X)
-    const addPortal = (roomGroup, x, y, z, w, h, rotY, intensity = 3.8) => {
-      const l = new ShapedAreaLight(new THREE.Color('#FFF9F0'), intensity, w, h);
-      l.isCircular = false;
-      l.position.set(x, y, z);
-      l.rotation.y = rotY;
-      l.userData.roomGroup = roomGroup;
-      grp.add(l);
-      this._rtWindowLights.push(l);
-      return l;
-    };
-
-    this._rtWindowLights = [];
-    // 1. Séjour & Kitchen Portals (active when viewing Séjour/Kitchen!)
-    addPortal('sejour', 3.45, 1.15, 8.48, 2.75, 1.85, 0, 4.2);
-    addPortal('sejour', 0.34, 1.30, 6.90, 1.25, 1.55, -Math.PI / 2, 3.6);
-    addPortal('sejour', 0.34, 1.30, 4.55, 1.25, 1.55, -Math.PI / 2, 3.6);
-    // 2. Bedroom Portals (only enabled when camera is inside/near that bedroom so Séjour MIS stays 3x cleaner!)
-    addPortal('ch3', 0.34, 1.30, 1.62, 1.25, 1.55, -Math.PI / 2, 3.8);
-    addPortal('ch2', 6.90, 1.30, 10.90, 1.25, 1.55, 0, 3.8);
-    addPortal('ch1', 9.71, 1.30, 10.90, 1.25, 1.55, 0, 3.8);
-
-    // Kitchen under-cabinet LEDs (enabled primarily in evening/night so daytime MIS stays clean!)
-    const backLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 10.0, 1.70, 0.08);
+    // Kitchen under-cabinet warm 2700K LED strips
+    const backLed = new ShapedAreaLight(new THREE.Color('#FFD296'), 8.0, 1.70, 0.06);
     backLed.isCircular = false;
-    backLed.position.set(3.47, 1.44, 3.36);
+    backLed.position.set(3.47, 1.45, 3.34);
     backLed.rotation.x = -Math.PI / 2;
     grp.add(backLed);
     this._rtBackLedLight = backLed;
 
-    const leftLed = new ShapedAreaLight(new THREE.Color('#FFD194'), 10.0, 0.08, 1.20);
+    const leftLed = new ShapedAreaLight(new THREE.Color('#FFD296'), 8.0, 0.06, 1.20);
     leftLed.isCircular = false;
-    leftLed.position.set(5.26, 1.44, 4.62);
+    leftLed.position.set(5.28, 1.45, 4.62);
     leftLed.rotation.x = -Math.PI / 2;
     grp.add(leftLed);
     this._rtLeftLedLight = leftLed;
 
-    // Practical ceiling bounce discs BELOW pendant shades (never trapped inside shade geometry!)
+    // Practical ceiling pendant discs positioned cleanly below shades
     this._rtPendantLights = [];
     [
-      [1.55, 1.52, 6.40],
-      [3.85, 1.82, 7.05],
-      [2.62, 1.82, 1.64],
-      [9.71, 1.82, 8.85],
-      [6.90, 1.82, 8.85]
+      [1.55, 1.50, 6.40], // Dining pendant
+      [3.85, 1.80, 7.05], // Lounge pendant
+      [2.62, 1.80, 1.64], // Ch. 3 Master pendant
+      [9.71, 1.80, 8.85], // Ch. 1 pendant
+      [6.90, 1.80, 8.85], // Ch. 2 pendant
+      [6.95, 2.38, 4.35], // SDB flush
+      [8.76, 2.38, 4.55]  // WC flush
     ].forEach(([px, py, pz]) => {
-      const pDisc = new ShapedAreaLight(new THREE.Color('#FFD08A'), 18.0, 0.34, 0.34);
+      const pDisc = new ShapedAreaLight(new THREE.Color('#FFD08A'), 14.0, 0.30, 0.30);
       pDisc.isCircular = true;
       pDisc.position.set(px, py, pz);
       pDisc.rotation.x = -Math.PI / 2;
@@ -400,25 +470,26 @@ export class KitchenRayTracer {
       this._rtPendantLights.push(pDisc);
     });
 
-    this._rtLightsGroup = grp;
-  }
+    // Chambre 3 TMA #2 twin bedside wall sconces (warm upward/outward glow)
+    this._rtSconceLights = [];
+    [[0.73, 1.56, 0.42], [2.83, 1.56, 0.42]].forEach(([sx, sy, sz]) => {
+      const sc = new ShapedAreaLight(new THREE.Color('#FFCA80'), 8.0, 0.14, 0.14);
+      sc.isCircular = true;
+      sc.position.set(sx, sy, sz);
+      sc.rotation.y = Math.PI; // Emit South (+Z) into Master Suite
+      grp.add(sc);
+      this._rtSconceLights.push(sc);
+    });
 
-  _detectCameraZone() {
-    const p = this.camera.position;
-    if (p.y > 4.5) return 'cutaway'; // Overview cutaway: sky dome lights every room directly!
-    if (p.z < 3.10 && p.x < 5.80) return 'ch3';
-    if (p.z > 6.72 && p.x >= 5.50 && p.x < 8.28) return 'ch2';
-    if (p.z > 6.72 && p.x >= 8.28) return 'ch1';
-    return 'sejour';
+    this._rtLightsGroup = grp;
   }
 
   _configureSceneLightingForRT(sunData, d65Override = false) {
     this.currentSunData = sunData;
     this.currentD65 = Boolean(d65Override);
-    const zone = this._detectCameraZone();
-    this._lastZone = zone;
     const { sunLight, fillLight, rimLight, underCabLights, pendantLights } = this.lightRefs;
 
+    // Disable raster fake fill/point lights so physically-based path tracing takes over cleanly
     if (fillLight) fillLight.visible = false;
     if (rimLight) rimLight.visible = false;
     (underCabLights || []).forEach(l => { l.visible = false; });
@@ -431,63 +502,52 @@ export class KitchenRayTracer {
 
     const isNight = Boolean(sunData?.isNight) && !d65Override;
     const isEvening = Boolean(sunData?.lightsRecommendedOn) && !d65Override;
-
-    const enableZonePortals = (color, intensity) => {
-      this._rtWindowLights.forEach(l => {
-        // In cutaway mode, HDR sky directly lights every open room -> zero portals needed!
-        // Inside a room, ONLY enable that room's portals so MIS never wastes rays on occluded walls!
-        const active = zone !== 'cutaway' && l.userData.roomGroup === zone;
-        l.visible = active;
-        l.color.copy(color);
-        l.intensity = intensity;
-      });
-    };
+    const lampsOn = this.lampsMode === 'on'
+      ? true
+      : this.lampsMode === 'off'
+        ? false
+        : (isNight || isEvening);
 
     if (d65Override) {
-      this.scene.environmentIntensity = 1.1;
-      this.renderer.toneMappingExposure = 0.96;
+      this.scene.environmentIntensity = 1.35;
+      this.renderer.toneMappingExposure = 1.0;
       sunLight.visible = true;
       sunLight.color.set('#FFFFFF');
-      sunLight.intensity = 1.5;
+      sunLight.intensity = 2.6;
       sunLight.position.set(7.6, 18.0, 13.6);
-      enableZonePortals(new THREE.Color('#FFFFFF'), 4.2);
-      this._rtBackLedLight.visible = false;
-      this._rtLeftLedLight.visible = false;
-      this._rtPendantLights.forEach(l => { l.visible = false; });
     } else if (isNight) {
-      this.scene.environmentIntensity = 0.25;
-      this.renderer.toneMappingExposure = 1.04;
+      this.scene.environmentIntensity = 0.22;
+      this.renderer.toneMappingExposure = 1.08;
       sunLight.visible = false;
-      this._rtWindowLights.forEach(l => { l.visible = false; });
-      this._rtBackLedLight.visible = true;
-      this._rtBackLedLight.intensity = 14.0;
-      this._rtLeftLedLight.visible = true;
-      this._rtLeftLedLight.intensity = 14.0;
-      this._rtPendantLights.forEach(l => { l.visible = true; l.intensity = 22.0; });
     } else {
-      this.scene.environmentIntensity = isEvening ? 0.75 : 1.05;
-      this.renderer.toneMappingExposure = 0.98;
+      // Strong, natural sun-to-sky contrast (carves real warm shafts through Loggia & West windows!)
+      this.scene.environmentIntensity = isEvening ? 0.95 : 1.35;
+      this.renderer.toneMappingExposure = 1.02;
       sunLight.visible = true;
       if (sunData) {
         sunLight.color.copy(sunData.sunColor);
-        sunLight.intensity = Math.max(1.4, sunData.sunIntensity * 1.5);
+        sunLight.intensity = Math.max(2.6, sunData.sunIntensity * 2.5);
         sunLight.position.set(
           5.6 + sunData.dir.x * 24,
-          Math.max(2.6, sunData.dir.y * 24),
+          Math.max(2.4, sunData.dir.y * 24),
           5.6 + sunData.dir.z * 24
         );
       }
-      const portalCol = sunData ? sunData.skyHorizon.clone().lerp(new THREE.Color('#FFF8EE'), 0.45) : new THREE.Color('#FFF8EE');
-      enableZonePortals(portalCol, isEvening ? 3.0 : 4.6);
-      this._rtBackLedLight.visible = isEvening;
-      this._rtBackLedLight.intensity = 10.0;
-      this._rtLeftLedLight.visible = isEvening;
-      this._rtLeftLedLight.intensity = 10.0;
-      this._rtPendantLights.forEach(l => {
-        l.visible = isEvening;
-        l.intensity = 16.0;
-      });
     }
+
+    const lampScale = isNight ? 1.35 : isEvening ? 1.0 : 0.65;
+    this._rtBackLedLight.visible = lampsOn;
+    this._rtBackLedLight.intensity = 10.0 * lampScale;
+    this._rtLeftLedLight.visible = lampsOn;
+    this._rtLeftLedLight.intensity = 10.0 * lampScale;
+    this._rtPendantLights.forEach(l => {
+      l.visible = lampsOn;
+      l.intensity = 15.0 * lampScale;
+    });
+    this._rtSconceLights.forEach(l => {
+      l.visible = lampsOn;
+      l.intensity = 8.5 * lampScale;
+    });
   }
 
   _hideRtIncompatibleMeshes() {
@@ -506,23 +566,32 @@ export class KitchenRayTracer {
   }
 
   _applyProfileSettings(profileKey, resetAccumulation = true) {
-    const p = RT_PROFILES[profileKey] || RT_PROFILES.balanced;
+    // Support legacy 'mobile' / 'ultra' keys gracefully
+    const mapped = profileKey === 'mobile' ? 'fast' : profileKey === 'ultra' ? 'photo' : profileKey;
+    const p = RT_PROFILES[mapped] || RT_PROFILES.balanced;
     this.profileKey = p.key;
     this.targetSamples = p.targetSamples;
 
     if (!this._pathTracer) return;
     this._pathTracer.renderScale = this.isSoftware ? Math.min(p.renderScale, 0.35) : p.renderScale;
     this._pathTracer.tiles.set(p.tiles[0], p.tiles[1]);
-    this._pathTracer.bounces = this.isSoftware ? Math.min(p.bounces, 3) : p.bounces;
+    this._pathTracer.bounces = this.isSoftware ? Math.min(p.bounces, 4) : p.bounces;
     this._pathTracer.filterGlossyFactor = p.filterGlossyFactor;
     this._pathTracer.textureSize.set(p.textureSize, p.textureSize);
 
     if (resetAccumulation && this.active) {
+      this._resetRateMeter();
       this.paused = false;
       this._pathTracer.pausePathTracing = false;
       this._pathTracer.updateMaterials();
       this._pathTracer.reset();
     }
+  }
+
+  _resetRateMeter() {
+    this._rateStartTs = performance.now();
+    this._rateStartSamples = 0;
+    this.samplesPerSec = 0;
   }
 
   getMaxDpr() {
@@ -560,6 +629,7 @@ export class KitchenRayTracer {
 
     this.active = true;
     this.paused = false;
+    this._resetRateMeter();
     this._pathTracer.enablePathTracing = true;
     this._pathTracer.pausePathTracing = false;
 
@@ -613,8 +683,31 @@ export class KitchenRayTracer {
     }
   }
 
-  setDenoise(enabled) {
-    this.denoiseEnabled = Boolean(enabled);
+  setDenoiseMode(mode) {
+    this.denoiseMode = ['off', 'subtle', 'smooth'].includes(mode) ? mode : 'subtle';
+    this.redrawDisplayOnly();
+  }
+
+  setExposureEv(ev) {
+    this.exposureEv = Math.max(-1.5, Math.min(1.5, Number(ev) || 0));
+    this.redrawDisplayOnly();
+  }
+
+  setLampsMode(mode) {
+    this.lampsMode = ['auto', 'on', 'off'].includes(mode) ? mode : 'auto';
+    if (this.active && this.currentSunData) {
+      this._configureSceneLightingForRT(this.currentSunData, this.currentD65);
+      this.needsLightsUpdate = true;
+      this.paused = false;
+      this._resetRateMeter();
+      if (this._pathTracer) this._pathTracer.pausePathTracing = false;
+    }
+  }
+
+  /**
+   * Re-runs the display/denoiser shader on the already-converged target without losing samples!
+   */
+  redrawDisplayOnly() {
     if (this.active && this._pathTracer && this.paused) {
       this._pathTracer.renderSample();
     }
@@ -626,21 +719,17 @@ export class KitchenRayTracer {
     this.needsEnvUpdate = true;
     this.needsLightsUpdate = true;
     this.paused = false;
+    this._resetRateMeter();
     if (this._pathTracer) this._pathTracer.pausePathTracing = false;
   }
 
   notifyCameraChanged() {
     if (!this.active || !this._pathTracer) return;
-    if (this.paused && this.samples >= this.targetSamples) {
+    if (this.paused) {
       this.paused = false;
       this._pathTracer.pausePathTracing = false;
     }
-    const newZone = this._detectCameraZone();
-    if (newZone !== this._lastZone) {
-      this._lastZone = newZone;
-      this._configureSceneLightingForRT(this.currentSunData, this.currentD65);
-      this.needsLightsUpdate = true;
-    }
+    this._resetRateMeter();
     this._pathTracer.updateCamera();
   }
 
@@ -648,6 +737,7 @@ export class KitchenRayTracer {
     if (!this.active) return;
     this.needsRebuild = true;
     this.paused = false;
+    this._resetRateMeter();
     if (this._pathTracer) this._pathTracer.pausePathTracing = false;
   }
 
@@ -655,6 +745,7 @@ export class KitchenRayTracer {
     if (!this.active) return;
     this.needsMaterialsUpdate = true;
     this.paused = false;
+    this._resetRateMeter();
     if (this._pathTracer) this._pathTracer.pausePathTracing = false;
   }
 
@@ -664,11 +755,6 @@ export class KitchenRayTracer {
     this.renderer.setPixelRatio(safeDpr);
     this._pathTracer.updateCamera();
   }
-
-  onCameraMoved() { this.notifyCameraChanged(); }
-  onGeometryChanged() { this.notifyGeometryChanged(); }
-  onMaterialsChanged() { this.notifyMaterialsChanged(); }
-  onResize() { this.notifyResize(); }
 
   get samples() {
     return this._pathTracer ? Math.floor(this._pathTracer.samples) : 0;
@@ -707,11 +793,18 @@ export class KitchenRayTracer {
 
     this._pathTracer.renderSample();
 
+    const curSamples = Math.floor(this._pathTracer.samples);
+    const elapsedSec = (performance.now() - this._rateStartTs) / 1000;
+    if (!this.paused && elapsedSec > 0.35 && curSamples > this._rateStartSamples) {
+      this.samplesPerSec = Math.round(((curSamples - this._rateStartSamples) / elapsedSec) * 10) / 10;
+    }
+
     return {
-      samples: Math.floor(this._pathTracer.samples),
+      samples: curSamples,
       targetSamples: this.targetSamples,
+      samplesPerSec: this.samplesPerSec,
       isCompiling: Boolean(this._pathTracer.isCompiling),
-      converged: this._pathTracer.samples >= this.targetSamples,
+      converged: curSamples >= this.targetSamples,
       paused: this.paused
     };
   }

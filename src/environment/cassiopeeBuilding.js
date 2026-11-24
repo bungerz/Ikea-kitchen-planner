@@ -107,30 +107,37 @@ export function buildCassiopeeEnvironment(scene) {
 
   // Architectural Clément Vergely horizontal floor cornices & recessed window bays (RDC..R+3)
   const floorStep = 2.85;
+  const westWinInst = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 1.65, 1.45), darkRecessMat, 16);
+  const southWinInst = new THREE.InstancedMesh(new THREE.BoxGeometry(1.45, 1.65, 0.06), darkRecessMat, 8);
+  const dummy = new THREE.Object3D();
+  let wi = 0, si = 0;
+
   for (let fl = 0; fl < 4; fl++) {
     const fy = -0.14 - fl * floorStep;
-    // South & West crisp concrete floor slab bands
     const bandS = new THREE.Mesh(new THREE.BoxGeometry(22.0, 0.24, 0.16), slabTrimMat);
     bandS.position.set(10.9, fy, 11.28);
     const bandW = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.24, 11.35), slabTrimMat);
     bandW.position.set(-0.04, fy, 5.62);
     envGroup.add(bandS, bandW);
 
-    // Lower-floor recessed windows on West facade (x = -0.02)
     [1.6, 4.55, 6.9, 9.9].forEach(wz => {
-      const win = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.65, 1.45), darkRecessMat);
-      win.position.set(-0.02, fy - 1.45, wz);
-      envGroup.add(win);
+      dummy.position.set(-0.02, fy - 1.45, wz);
+      dummy.updateMatrix();
+      westWinInst.setMatrixAt(wi++, dummy.matrix);
     });
-    // Lower-floor recessed loggia & bedroom windows on South facade (z = 11.27)
     const lowLog = new THREE.Mesh(new THREE.BoxGeometry(4.8, 1.65, 0.18), lowerLoggiaMat);
     lowLog.position.set(2.75, fy - 1.45, 11.24);
-    const lowW1 = new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.65, 0.06), darkRecessMat);
-    lowW1.position.set(6.9, fy - 1.45, 11.27);
-    const lowW2 = lowW1.clone();
-    lowW2.position.x = 9.7;
-    envGroup.add(lowLog, lowW1, lowW2);
+    envGroup.add(lowLog);
+
+    [6.9, 9.7].forEach(sx => {
+      dummy.position.set(sx, fy - 1.45, 11.27);
+      dummy.updateMatrix();
+      southWinInst.setMatrixAt(si++, dummy.matrix);
+    });
   }
+  westWinInst.instanceMatrix.needsUpdate = true;
+  southWinInst.instanceMatrix.needsUpdate = true;
+  envGroup.add(westWinInst, southWinInst);
 
   /* =====================================================================
    * 3. ÉCOQUARTIER DE L'ÉTOILE GROUND, STREET, COURTYARD & TREES (y = -11.6m)

@@ -249,47 +249,81 @@ export function buildApartmentShell(scene) {
   ceilingGroup.name = 'apartment-ceilings';
   scene.add(ceilingGroup);
 
-  // Per-room Dulux Valentine wall materials (main + accent wall per room!)
+  // Per-room Dulux Valentine wall materials (main + accent wall per room!) with subtle plaster normal map
+  const wallNormal = getWallPlasterNormalMap(4, 3);
   const paintRoomIds = ['sejour', 'ch3', 'ch1', 'ch2', 'sdb', 'wc', 'entree'];
   const roomPaintMaterials = {};
   for (const rid of paintRoomIds) {
     roomPaintMaterials[rid] = {
-      main: new THREE.MeshStandardMaterial({ color: '#F6F6F3', roughness: 0.92, metalness: 0.0, envMapIntensity: 0.22 }),
-      accent: new THREE.MeshStandardMaterial({ color: '#F6F6F3', roughness: 0.92, metalness: 0.0, envMapIntensity: 0.22 })
+      main: new THREE.MeshStandardMaterial({
+        color: '#F6F6F3',
+        roughness: 0.90,
+        metalness: 0.0,
+        normalMap: wallNormal,
+        normalScale: new THREE.Vector2(0.08, 0.08),
+        envMapIntensity: 0.26
+      }),
+      accent: new THREE.MeshStandardMaterial({
+        color: '#F6F6F3',
+        roughness: 0.90,
+        metalness: 0.0,
+        normalMap: wallNormal,
+        normalScale: new THREE.Vector2(0.08, 0.08),
+        envMapIntensity: 0.26
+      })
     };
   }
 
   // Structural shell material (neutral warm architectural plaster / concrete edge caps)
-  const extWallMat = new THREE.MeshStandardMaterial({ color: '#E8E4DC', roughness: 0.90, metalness: 0.0, envMapIntensity: 0.20 });
-  const intWallMat = new THREE.MeshStandardMaterial({ color: '#F1EFEA', roughness: 0.92, metalness: 0.0, envMapIntensity: 0.20 });
+  const extWallMat = new THREE.MeshStandardMaterial({ color: '#E8E4DC', roughness: 0.88, metalness: 0.0, envMapIntensity: 0.24 });
+  const intWallMat = new THREE.MeshStandardMaterial({ color: '#F1EFEA', roughness: 0.90, metalness: 0.0, envMapIntensity: 0.24 });
 
   /* =====================================================================
-   * 1. FLOORS (EXACT SIGNED PRESTATIONS!)
+   * 1. FLOORS (EXACT SIGNED PRESTATIONS WITH PAIRED NORMAL + ROUGHNESS MAPS!)
    * - Taupe 60x60 Kevin (4880309) in Séjour/Cuisine, SDB, WC, Entrée, DGT
    * - Egger Chêne du Nord Naturel (EL 2970) in Ch1, Ch2, Ch3
    * - Outdoor paving in Loggia
    * ===================================================================== */
+  const taupeTex = getTaupeTileTextures(9.5, 9.5);
   const taupeFloorMat = new THREE.MeshStandardMaterial({
-    map: getTaupeTileTextures(9.5, 9.5).map,
-    roughness: 0.72,
+    map: taupeTex.map,
+    normalMap: taupeTex.normalMap,
+    normalScale: new THREE.Vector2(0.45, 0.45),
+    roughnessMap: taupeTex.roughnessMap,
+    roughness: 1.0,
     metalness: 0.01,
-    envMapIntensity: 0.28
+    envMapIntensity: 0.42
   });
+
+  const oakCh3Tex = getOakLaminateTextures(4.5, 2.5);
   const oakCh3Mat = new THREE.MeshStandardMaterial({
-    map: getOakLaminateTextures(4.5, 2.5).map,
-    roughness: 0.62,
+    map: oakCh3Tex.map,
+    normalMap: oakCh3Tex.normalMap,
+    normalScale: new THREE.Vector2(0.40, 0.40),
+    roughnessMap: oakCh3Tex.roughnessMap,
+    roughness: 1.0,
     metalness: 0.0,
-    envMapIntensity: 0.24
+    envMapIntensity: 0.36
   });
+
+  const oakCh12Tex = getOakLaminateTextures(2.4, 3.6);
   const oakCh12Mat = new THREE.MeshStandardMaterial({
-    map: getOakLaminateTextures(2.4, 3.6).map,
-    roughness: 0.62,
+    map: oakCh12Tex.map,
+    normalMap: oakCh12Tex.normalMap,
+    normalScale: new THREE.Vector2(0.40, 0.40),
+    roughnessMap: oakCh12Tex.roughnessMap,
+    roughness: 1.0,
     metalness: 0.0,
-    envMapIntensity: 0.24
+    envMapIntensity: 0.36
   });
+
+  const loggiaTex = getLoggiaTileTextures(8, 3.8);
   const loggiaFloorMat = new THREE.MeshStandardMaterial({
-    map: getLoggiaTileTextures(8, 3.8).map,
-    roughness: 0.88,
+    map: loggiaTex.map,
+    normalMap: loggiaTex.normalMap,
+    normalScale: new THREE.Vector2(0.55, 0.55),
+    roughnessMap: loggiaTex.roughnessMap,
+    roughness: 1.0,
     metalness: 0.0
   });
 
@@ -324,6 +358,12 @@ export function buildApartmentShell(scene) {
   /* =====================================================================
    * 2. EXTERIOR STRUCTURAL WALLS WITH WINDOW & LOGGIA OPENINGS
    * ===================================================================== */
+  const westWallGroup = new THREE.Group();
+  const southWallGroup = new THREE.Group();
+  const eastWallGroup = new THREE.Group();
+  const northWallGroup = new THREE.Group();
+  root.add(westWallGroup, southWallGroup, eastWallGroup, northWallGroup);
+
   // West exterior wall (x = 0.00..0.26, center x = 0.13, z = 0.00..11.25)
   const westOpenings = [
     { s: 0.92, e: 2.32, y0: 0.45, y1: 2.15 }, // Chambre 3 window (140/all.45)
@@ -331,45 +371,45 @@ export function buildApartmentShell(scene) {
     { s: 6.20, e: 7.60, y0: 0.45, y1: 2.15 }, // Séjour South window (140/all.45)
     { s: 8.82, e: 11.11, y0: 1.05, y1: H }    // Loggia open west side above parapet
   ];
-  addWallWithOpenings(root, { axis: 'z', fixedCoord: 0.13, start: 0, end: 11.25, thickness: 0.26, openings: westOpenings, material: extWallMat });
-  addWindowUnit(root, { axis: 'z', coord: 0.13, s: 0.92, e: 2.32, y0: 0.45, y1: 2.15 });
-  addWindowUnit(root, { axis: 'z', coord: 0.13, s: 3.85, e: 5.25, y0: 0.45, y1: 2.15 });
-  addWindowUnit(root, { axis: 'z', coord: 0.13, s: 6.20, e: 7.60, y0: 0.45, y1: 2.15 });
+  addWallWithOpenings(westWallGroup, { axis: 'z', fixedCoord: 0.13, start: 0, end: 11.25, thickness: 0.26, openings: westOpenings, material: extWallMat });
+  addWindowUnit(westWallGroup, { axis: 'z', coord: 0.13, s: 0.92, e: 2.32, y0: 0.45, y1: 2.15, interiorSign: 1 });
+  addWindowUnit(westWallGroup, { axis: 'z', coord: 0.13, s: 3.85, e: 5.25, y0: 0.45, y1: 2.15, interiorSign: 1 });
+  addWindowUnit(westWallGroup, { axis: 'z', coord: 0.13, s: 6.20, e: 7.60, y0: 0.45, y1: 2.15, interiorSign: 1 });
 
   // North exterior wall of Chambre 3 (z = 0.00..0.26, center 0.13, x = 0.00..5.97)
-  addWallWithOpenings(root, { axis: 'x', fixedCoord: 0.13, start: 0, end: 5.97, thickness: 0.26, material: extWallMat });
+  addWallWithOpenings(northWallGroup, { axis: 'x', fixedCoord: 0.13, start: 0, end: 5.97, thickness: 0.26, material: extWallMat });
 
   // East exterior wall of Chambre 3 wing (x = 5.71..5.97, center 5.84, z = 0.00..3.12)
-  addWallWithOpenings(root, { axis: 'z', fixedCoord: 5.84, start: 0, end: 3.12, thickness: 0.26, material: extWallMat });
+  addWallWithOpenings(eastWallGroup, { axis: 'z', fixedCoord: 5.84, start: 0, end: 3.12, thickness: 0.26, material: extWallMat });
 
   // North exterior wall of SDB / WC / Entrée (z = 2.86..3.12, center 2.99, x = 5.71..11.37)
-  addWallWithOpenings(root, {
+  addWallWithOpenings(northWallGroup, {
     axis: 'x', fixedCoord: 2.99, start: 5.71, end: 11.37, thickness: 0.26,
     openings: [{ s: 9.72, e: 10.65, y0: 0, y1: 2.04 }], // Entrance door 93/203
     material: extWallMat
   });
-  addDoorUnit(root, { axis: 'x', coord: 2.99, s: 9.72, e: 10.65, height: 2.04, openAngle: 0.08, swingSign: 1, isEntry: true });
+  addDoorUnit(northWallGroup, { axis: 'x', coord: 2.99, s: 9.72, e: 10.65, height: 2.04, openAngle: 0.08, swingSign: 1, isEntry: true });
 
   // East exterior wall of Entrée & Chambre 1 (x = 11.11..11.37, center 11.24, z = 2.86..11.25)
-  addWallWithOpenings(root, { axis: 'z', fixedCoord: 11.24, start: 2.86, end: 11.25, thickness: 0.26, material: extWallMat });
+  addWallWithOpenings(eastWallGroup, { axis: 'z', fixedCoord: 11.24, start: 2.86, end: 11.25, thickness: 0.26, material: extWallMat });
 
   // South exterior wall of Chambre 2 & Chambre 1 (z = 10.98..11.25, center 11.115, x = 5.27..11.37)
   const southBedOpenings = [
     { s: 6.20, e: 7.60, y0: 0.45, y1: 2.15 }, // Chambre 2 window
     { s: 9.01, e: 10.41, y0: 0.45, y1: 2.15 } // Chambre 1 window
   ];
-  addWallWithOpenings(root, { axis: 'x', fixedCoord: 11.115, start: 5.27, end: 11.37, thickness: 0.27, openings: southBedOpenings, material: extWallMat });
-  addWindowUnit(root, { axis: 'x', coord: 11.115, s: 6.20, e: 7.60, y0: 0.45, y1: 2.15 });
-  addWindowUnit(root, { axis: 'x', coord: 11.115, s: 9.01, e: 10.41, y0: 0.45, y1: 2.15 });
+  addWallWithOpenings(southWallGroup, { axis: 'x', fixedCoord: 11.115, start: 5.27, end: 11.37, thickness: 0.27, openings: southBedOpenings, material: extWallMat });
+  addWindowUnit(southWallGroup, { axis: 'x', coord: 11.115, s: 6.20, e: 7.60, y0: 0.45, y1: 2.15, interiorSign: -1 });
+  addWindowUnit(southWallGroup, { axis: 'x', coord: 11.115, s: 9.01, e: 10.41, y0: 0.45, y1: 2.15, interiorSign: -1 });
 
   // Glazed wall between Séjour & Loggia (z = 8.56..8.82, center 8.69, x = 0.26..5.56)
   const loggiaWallOpenings = [
     { s: 0.65, e: 1.65, y0: 0.0, y1: 2.15 },  // Porte fenêtre ouvrant 90/VR
     { s: 2.00, e: 4.95, y0: 0.06, y1: 2.15 }  // Large fixed picture window
   ];
-  addWallWithOpenings(root, { axis: 'x', fixedCoord: 8.69, start: 0.26, end: 5.56, thickness: 0.26, openings: loggiaWallOpenings, material: extWallMat });
-  addWindowUnit(root, { axis: 'x', coord: 8.69, s: 0.65, e: 1.65, y0: 0.0, y1: 2.15 });
-  addWindowUnit(root, { axis: 'x', coord: 8.69, s: 2.00, e: 4.95, y0: 0.06, y1: 2.15 });
+  addWallWithOpenings(southWallGroup, { axis: 'x', fixedCoord: 8.69, start: 0.26, end: 5.56, thickness: 0.26, openings: loggiaWallOpenings, material: extWallMat });
+  addWindowUnit(southWallGroup, { axis: 'x', coord: 8.69, s: 0.65, e: 1.65, y0: 0.0, y1: 2.15, interiorSign: -1 });
+  addWindowUnit(southWallGroup, { axis: 'x', coord: 8.69, s: 2.00, e: 4.95, y0: 0.06, y1: 2.15, interiorSign: -1 });
 
   // Insulated wall between Loggia & Chambre 2 (x = 5.27..5.56, center 5.415, z = 8.56..11.25)
   addWallWithOpenings(root, { axis: 'z', fixedCoord: 5.415, start: 8.56, end: 11.25, thickness: 0.29, material: extWallMat });
@@ -500,6 +540,12 @@ export function buildApartmentShell(scene) {
   addFramedArt(root, { x: 3.15,  y: 1.54, z: 3.14, rotY: 0,            w: 0.56, h: 0.72, variant: 0 });
 
   /* =====================================================================
+   * 6B. ARCHITECTURAL BASEBOARDS (PLINTHES 7 cm) & SHEER LINEN CURTAINS
+   * ===================================================================== */
+  buildBaseboards(root);
+  const curtainGroup = buildSheerCurtains(scene);
+
+  /* =====================================================================
    * 7. CEILINGS (Toggleable for Cutaway vs Eye-Level / Ray-Tracing!)
    * ===================================================================== */
   const ceilMat = new THREE.MeshStandardMaterial({ color: '#FAFAFA', roughness: 0.94, side: THREE.DoubleSide });
@@ -517,9 +563,126 @@ export function buildApartmentShell(scene) {
   return {
     root,
     ceilingGroup,
+    curtainGroup,
+    exteriorWallGroups: { west: westWallGroup, south: southWallGroup, east: eastWallGroup, north: northWallGroup },
     roomPaintMaterials,
     studioGroundPlane: groundPlane
   };
+}
+
+function buildBaseboards(parent) {
+  const g = new THREE.Group();
+  g.name = 'architectural-baseboards';
+  const oakTex = getWoodPbrTextures('oak', 2, 0.5);
+  const oakPlinth = new THREE.MeshStandardMaterial({
+    map: oakTex.map, normalMap: oakTex.normalMap, normalScale: new THREE.Vector2(0.3, 0.3), roughness: 0.58
+  });
+  const tilePlinth = new THREE.MeshStandardMaterial({ color: '#A59D93', roughness: 0.65 });
+  const ph = 0.072;
+  const pt = 0.012;
+
+  const addRun = (axis, fixed, s, e, sign, mat) => {
+    const len = e - s;
+    if (len < 0.05) return;
+    const geo = axis === 'x' ? new THREE.BoxGeometry(len, ph, pt) : new THREE.BoxGeometry(pt, ph, len);
+    const m = new THREE.Mesh(geo, mat);
+    if (axis === 'x') m.position.set((s + e) / 2, ph / 2, fixed + sign * (pt / 2 + 0.003));
+    else m.position.set(fixed + sign * (pt / 2 + 0.003), ph / 2, (s + e) / 2);
+    m.receiveShadow = true;
+    g.add(m);
+  };
+
+  // Chambre 3 Oak Baseboards
+  addRun('x', 0.26, 0.26, 5.71,  1, oakPlinth);
+  addRun('x', 3.02, 1.27, 5.71, -1, oakPlinth);
+  addRun('z', 0.26, 0.26, 3.02,  1, oakPlinth);
+  addRun('z', 5.71, 0.26, 3.02, -1, oakPlinth);
+
+  // Séjour Taupe Tile Baseboards (skipping kitchen cabinetry & French door opening)
+  addRun('z', 0.26, 3.12, 8.56,  1, tilePlinth);
+  addRun('z', 5.49, 6.71, 8.56, -1, tilePlinth);
+  addRun('x', 3.12, 1.27, 1.94,  1, tilePlinth);
+
+  // Chambre 1 & 2 Oak Baseboards
+  addRun('z', 11.11, 6.78, 10.98, -1, oakPlinth);
+  addRun('z', 8.31,  6.78, 10.98,  1, oakPlinth);
+  addRun('x', 10.98, 8.31, 11.11, -1, oakPlinth);
+  addRun('z', 5.56,  6.78, 10.98,  1, oakPlinth);
+  addRun('z', 8.24,  6.78, 10.98, -1, oakPlinth);
+  addRun('x', 10.98, 5.56, 8.24,  -1, oakPlinth);
+
+  // Entrée / DGT Baseboards
+  addRun('z', 11.11, 3.12, 6.71, -1, tilePlinth);
+  addRun('x', 6.71, 5.56, 7.28, -1, tilePlinth);
+  addRun('x', 6.71, 9.25, 11.11, -1, tilePlinth);
+
+  parent.add(g);
+}
+
+function buildSheerCurtains(scene) {
+  const g = new THREE.Group();
+  g.name = 'sheer-curtains';
+  const railMat = new THREE.MeshStandardMaterial({ color: '#26272A', roughness: 0.35, metalness: 0.72 });
+  const sheerMat = new THREE.MeshStandardMaterial({
+    color: '#F5F1E9',
+    roughness: 0.94,
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0.72,
+    side: THREE.DoubleSide
+  });
+
+  const addCurtainSet = ({ axis, wallCoord, inwardSign, s, e }) => {
+    const len = e - s;
+    const mid = (s + e) / 2;
+    const railY = 2.42;
+    const cH = 2.38;
+    const offset = wallCoord + inwardSign * 0.14;
+
+    // Slender matte black architectural curtain rail
+    const railGeo = axis === 'x'
+      ? new THREE.CylinderGeometry(0.008, 0.008, len + 0.32, 10)
+      : new THREE.CylinderGeometry(0.008, 0.008, len + 0.32, 10);
+    const rail = new THREE.Mesh(railGeo, railMat);
+    if (axis === 'x') {
+      rail.rotation.z = Math.PI / 2;
+      rail.position.set(mid, railY, offset);
+    } else {
+      rail.rotation.x = Math.PI / 2;
+      rail.position.set(offset, railY, mid);
+    }
+    g.add(rail);
+
+    // Soft pleated side panels framing each window without blocking sunlight!
+    const panelW = Math.min(0.42, len * 0.22);
+    for (const side of [-1, 1]) {
+      const center = mid + side * (len / 2 + 0.02);
+      const folds = 4;
+      for (let i = 0; i < folds; i++) {
+        const fOff = (i - (folds - 1) / 2) * (panelW / folds);
+        const foldGeo = new THREE.CylinderGeometry(0.028, 0.036, cH, 8, 1, true);
+        const fold = new THREE.Mesh(foldGeo, sheerMat);
+        fold.castShadow = false;
+        fold.receiveShadow = true;
+        if (axis === 'x') {
+          fold.position.set(center + fOff, cH / 2 + 0.02, offset + (i % 2 === 0 ? 0.015 : -0.015));
+        } else {
+          fold.position.set(offset + (i % 2 === 0 ? 0.015 : -0.015), cH / 2 + 0.02, center + fOff);
+        }
+        g.add(fold);
+      }
+    }
+  };
+
+  // Séjour Loggia large glazing + West windows + Bedroom windows
+  addCurtainSet({ axis: 'x', wallCoord: 8.56,  inwardSign: -1, s: 0.62, e: 4.98 });
+  addCurtainSet({ axis: 'z', wallCoord: 0.26,  inwardSign:  1, s: 6.18, e: 7.62 });
+  addCurtainSet({ axis: 'z', wallCoord: 0.26,  inwardSign:  1, s: 0.90, e: 2.34 });
+  addCurtainSet({ axis: 'x', wallCoord: 10.98, inwardSign: -1, s: 6.18, e: 7.62 });
+  addCurtainSet({ axis: 'x', wallCoord: 10.98, inwardSign: -1, s: 9.00, e: 10.42 });
+
+  scene.add(g);
+  return g;
 }
 
 function addFramedArt(parent, { x, y, z, rotY, w, h, variant }) {
@@ -548,10 +711,16 @@ function addFramedArt(parent, { x, y, z, rotY, w, h, variant }) {
  */
 function buildBathroomFixed(parent) {
   const g = new THREE.Group();
-  const ceramicMat = new THREE.MeshStandardMaterial({ color: '#F9F9F7', roughness: 0.14, metalness: 0.02 });
-  const chromeMat = new THREE.MeshStandardMaterial({ color: '#CFD3D7', roughness: 0.18, metalness: 0.90 });
-  const kevinTaupeMat = new THREE.MeshStandardMaterial({ map: getBathroomTileTexture('taupe', 3, 6), roughness: 0.52 });
-  const kevinDecorMat = new THREE.MeshStandardMaterial({ map: getBathroomTileTexture('decor', 4.5, 6), roughness: 0.56 });
+  const ceramicMat = new THREE.MeshStandardMaterial({ color: '#F9F9F7', roughness: 0.12, metalness: 0.02 });
+  const chromeMat = new THREE.MeshStandardMaterial({ color: '#D4D8DC', roughness: 0.14, metalness: 0.94 });
+  const ktTex = getBathroomTileTextures('taupe', 3, 6);
+  const kdTex = getBathroomTileTextures('decor', 4.5, 6);
+  const kevinTaupeMat = new THREE.MeshStandardMaterial({
+    map: ktTex.map, normalMap: ktTex.normalMap, normalScale: new THREE.Vector2(0.45, 0.45), roughnessMap: ktTex.roughnessMap, roughness: 1.0
+  });
+  const kevinDecorMat = new THREE.MeshStandardMaterial({
+    map: kdTex.map, normalMap: kdTex.normalMap, normalScale: new THREE.Vector2(0.60, 0.60), roughnessMap: kdTex.roughnessMap, roughness: 1.0
+  });
 
   // Full-height bathtub surround tiles (north wall + two side walls)
   const backDecor = new THREE.Mesh(new THREE.BoxGeometry(2.70, H, 0.012), kevinDecorMat);
@@ -564,20 +733,18 @@ function buildBathroomFixed(parent) {
 
   // Bathtub body + Kevin Taupe tiled apron (tablier)
   const tubLen = 1.72, tubD = 0.74, tubH = 0.54;
-  const tubX = 7.40; // tucked against east/north corner of SDB
+  const tubX = 7.40;
   const apron = new THREE.Mesh(new THREE.BoxGeometry(tubLen, tubH, 0.04), kevinTaupeMat);
   apron.position.set(tubX, tubH / 2, 3.14 + tubD);
   const tubRim = new THREE.Mesh(new THREE.BoxGeometry(tubLen, 0.05, tubD), ceramicMat);
   tubRim.position.set(tubX, tubH, 3.14 + tubD / 2);
-  const tubBasin = new THREE.Mesh(new THREE.BoxGeometry(tubLen - 0.14, tubH - 0.08, tubD - 0.14), new THREE.MeshStandardMaterial({ color: '#EAECEB', roughness: 0.18 }));
+  const tubBasin = new THREE.Mesh(new THREE.BoxGeometry(tubLen - 0.14, tubH - 0.08, tubD - 0.14), new THREE.MeshStandardMaterial({ color: '#EAECEB', roughness: 0.16 }));
   tubBasin.position.set(tubX, tubH / 2 + 0.02, 3.14 + tubD / 2);
-  // Glass shower screen
   const screen = new THREE.Mesh(
     new THREE.BoxGeometry(0.012, 1.40, 0.75),
-    new THREE.MeshPhysicalMaterial({ color: '#E2F2F8', roughness: 0.06, transparent: true, opacity: 0.28 })
+    new THREE.MeshPhysicalMaterial({ color: '#E2F2F8', roughness: 0.04, transmission: 0.85, ior: 1.5, transparent: true, opacity: 0.25 })
   );
   screen.position.set(tubX - tubLen / 2 + 0.02, tubH + 0.70, 3.14 + tubD / 2);
-  // Shower column
   const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 1.35, 10), chromeMat);
   rod.position.set(tubX + tubLen / 2 - 0.08, 1.45, 3.14 + tubD / 2);
   const head = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.02, 16), chromeMat);
@@ -595,12 +762,12 @@ function buildBathroomFixed(parent) {
   tap.position.set(5.65, 0.94, 4.35);
   const mirror = new THREE.Mesh(
     new THREE.BoxGeometry(0.02, 0.80, 0.86),
-    new THREE.MeshStandardMaterial({ color: '#D7E2E8', roughness: 0.06, metalness: 0.92 })
+    new THREE.MeshStandardMaterial({ color: '#F0F4F6', roughness: 0.015, metalness: 1.0, envMapIntensity: 1.2 })
   );
   mirror.position.set(5.58, 1.48, 4.35);
   const mirLight = new THREE.Mesh(
     new THREE.BoxGeometry(0.04, 0.03, 0.60),
-    new THREE.MeshStandardMaterial({ color: '#FFF8EB', emissive: '#FFE4B5', emissiveIntensity: 0.9 })
+    new THREE.MeshStandardMaterial({ color: '#FFF8EB', emissive: '#FFE4B5', emissiveIntensity: 1.25 })
   );
   mirLight.position.set(5.60, 1.92, 4.35);
   g.add(vanBody, basinTop, tap, mirror, mirLight);
@@ -609,7 +776,7 @@ function buildBathroomFixed(parent) {
   const wm = new THREE.Mesh(new THREE.BoxGeometry(0.60, 0.85, 0.60), vanMat);
   wm.position.set(5.88, 0.425, 5.10);
   wm.castShadow = true;
-  const wmDoor = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 20), new THREE.MeshStandardMaterial({ color: '#2B2D30', roughness: 0.25, metalness: 0.5 }));
+  const wmDoor = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.04, 20), new THREE.MeshStandardMaterial({ color: '#2B2D30', roughness: 0.22, metalness: 0.55 }));
   wmDoor.rotation.z = Math.PI / 2;
   wmDoor.position.set(6.19, 0.45, 5.10);
   g.add(wm, wmDoor);
@@ -627,8 +794,9 @@ function buildBathroomFixed(parent) {
  */
 function buildWcFixed(parent) {
   const g = new THREE.Group();
-  const ceramic = new THREE.MeshStandardMaterial({ color: '#FAF9F6', roughness: 0.14 });
-  const woodOak = new THREE.MeshStandardMaterial({ map: getWoodTexture('oak', 1, 1), roughness: 0.55 });
+  const ceramic = new THREE.MeshStandardMaterial({ color: '#FAF9F6', roughness: 0.12 });
+  const oakTex = getWoodPbrTextures('oak', 1, 1);
+  const woodOak = new THREE.MeshStandardMaterial({ map: oakTex.map, normalMap: oakTex.normalMap, roughnessMap: oakTex.roughnessMap, roughness: 1.0 });
   const blackMat = new THREE.MeshStandardMaterial({ color: '#1E1F22', roughness: 0.35, metalness: 0.65 });
 
   // Toilet bowl & cistern against north GT wall (z = 3.60)
@@ -653,7 +821,7 @@ function buildWcFixed(parent) {
   lmTap.position.set(9.11, 0.96, 4.60);
   const lmMirror = new THREE.Mesh(
     new THREE.CylinderGeometry(0.21, 0.21, 0.015, 24),
-    new THREE.MeshStandardMaterial({ color: '#D7E2E8', roughness: 0.08, metalness: 0.9 })
+    new THREE.MeshStandardMaterial({ color: '#F0F4F6', roughness: 0.015, metalness: 1.0, envMapIntensity: 1.2 })
   );
   lmMirror.rotation.z = Math.PI / 2;
   lmMirror.position.set(9.15, 1.42, 4.68);
@@ -670,12 +838,10 @@ function buildEntreeCloset(parent) {
   const whiteDoor = new THREE.MeshStandardMaterial({ color: '#F3F2EE', roughness: 0.55 });
   const trimMat = new THREE.MeshStandardMaterial({ color: '#D4D0C8', roughness: 0.6 });
 
-  // Built-in closet box from x=9.24..9.84, z=3.14..5.40
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.60, H - 0.04, 2.24), whiteDoor);
   body.position.set(9.54, (H - 0.04) / 2, 4.26);
   body.castShadow = true;
   body.receiveShadow = true;
-  // Vertical sliding door seam
   const seam = new THREE.Mesh(new THREE.BoxGeometry(0.015, H - 0.08, 0.012), trimMat);
   seam.position.set(9.845, (H - 0.04) / 2, 4.26);
   g.add(body, seam);
