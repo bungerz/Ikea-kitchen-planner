@@ -2,13 +2,54 @@
 
 @theme {
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
-  --color-studio-bg: #F7F5F1;
-  --color-studio-card: #FFFFFF;
-  --color-studio-subtle: #EFECE6;
-  --color-studio-border: #E2DDD5;
-  --color-studio-ink: #1E1C19;
-  --color-studio-muted: #666057;
-  --color-studio-accent: #8B6B4E;
+  --color-studio-bg: var(--ui-bg);
+  --color-studio-card: var(--ui-surface);
+  --color-studio-subtle: var(--ui-subtle);
+  --color-studio-border: var(--ui-border);
+  --color-studio-ink: var(--ui-ink);
+  --color-studio-muted: var(--ui-muted);
+  --color-studio-accent: var(--ui-accent);
+}
+
+/* =========================================================================
+ * ADAPTIVE LIGHT / DARK ARCHITECTURAL STUDIO DESIGN TOKENS
+ * ========================================================================= */
+:root {
+  --ui-canvas: #E4E0D8;
+  --ui-bg: #F6F4EF;
+  --ui-surface: #FFFFFF;
+  --ui-subtle: #EEEAE2;
+  --ui-border: rgba(30, 28, 25, 0.11);
+  --ui-border-strong: rgba(30, 28, 25, 0.22);
+  --ui-ink: #1C1A17;
+  --ui-muted: #6A645B;
+  --ui-accent: #9A6E44;
+  --ui-accent-soft: rgba(154, 110, 68, 0.14);
+  --ui-glass: rgba(252, 251, 248, 0.86);
+  --ui-glass-strong: rgba(255, 255, 255, 0.94);
+  --ui-dock-bg: rgba(255, 255, 255, 0.92);
+  --ui-shadow: 0 10px 30px rgba(20, 18, 15, 0.10), 0 1px 3px rgba(20, 18, 15, 0.06);
+  --ui-active-bg: #1C1A17;
+  --ui-active-ink: #FFFFFF;
+}
+
+[data-theme="dark"] {
+  --ui-canvas: #141416;
+  --ui-bg: #18181B;
+  --ui-surface: #202024;
+  --ui-subtle: #2A2A30;
+  --ui-border: rgba(255, 255, 255, 0.10);
+  --ui-border-strong: rgba(255, 255, 255, 0.22);
+  --ui-ink: #F4F3F0;
+  --ui-muted: #A1A1AA;
+  --ui-accent: #E5A95C;
+  --ui-accent-soft: rgba(229, 169, 92, 0.16);
+  --ui-glass: rgba(24, 24, 27, 0.84);
+  --ui-glass-strong: rgba(28, 28, 32, 0.94);
+  --ui-dock-bg: rgba(24, 24, 27, 0.92);
+  --ui-shadow: 0 14px 36px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.30);
+  --ui-active-bg: #E5A95C;
+  --ui-active-ink: #181510;
 }
 
 *, *::before, *::after {
@@ -24,29 +65,34 @@ html, body {
   height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;
-  background: #E4E0D8;
+  background: var(--ui-canvas);
   font-family: var(--font-sans);
-  color: #1E1C19;
+  color: var(--ui-ink);
   -webkit-font-smoothing: antialiased;
 }
 
+select option {
+  background: var(--ui-surface);
+  color: var(--ui-ink);
+}
+
+/* =========================================================================
+ * FULL-BLEED CANVAS-FIRST WORKSPACE (100% 3D VIEWPORT!)
+ * ========================================================================= */
 #app {
   position: fixed;
   inset: 0;
   width: 100vw;
   height: 100dvh;
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
-  background: #E4E0D8;
+  background: var(--ui-canvas);
 }
 
 #viewport {
-  position: relative;
-  flex: 0 0 48%;
-  min-height: 220px;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-width: 0;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -58,81 +104,127 @@ html, body {
   user-select: none;
 }
 
-#sidebar {
-  flex: 1 1 0;
-  min-height: 0;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: #F7F5F1;
-  border-top: 1px solid #E2DDD5;
-  z-index: 10;
+/* =========================================================================
+ * FROSTED ARCHITECTURAL FLOATING CHROME
+ * ========================================================================= */
+.studio-glass {
+  background: var(--ui-glass);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow);
+  color: var(--ui-ink);
 }
 
-@media (min-width: 780px) {
-  #app {
-    flex-direction: row;
-  }
-  #viewport {
-    flex: 1 1 0;
-    min-width: 0;
-    min-height: 0;
-    width: auto;
-    height: 100%;
-  }
-  #sidebar {
-    flex: 0 0 clamp(340px, 33vw, 420px);
-    max-width: 44vw;
-    height: 100%;
-    border-top: none;
-    border-left: 1px solid #E2DDD5;
-  }
+.studio-glass-strong {
+  background: var(--ui-glass-strong);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow);
+  color: var(--ui-ink);
 }
 
-#app.sidebar-collapsed #sidebar {
-  display: none;
+.studio-surface {
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-ink);
 }
 
-#app.sidebar-collapsed #viewport {
-  flex: 1 1 100%;
-  height: 100%;
+.studio-subtle {
+  background: var(--ui-subtle);
+  border: 1px solid var(--ui-border);
+  color: var(--ui-ink);
 }
 
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-#sidebar-scroll {
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+.studio-btn-active {
+  background: var(--ui-active-bg) !important;
+  color: var(--ui-active-ink) !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
 }
 
-.glass-pill {
-  background: rgba(255, 255, 255, 0.90);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(30, 28, 25, 0.12);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+.studio-card-active {
+  border-color: var(--ui-accent) !important;
+  background: var(--ui-accent-soft) !important;
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
 }
 
-.dark-glass-pill {
-  background: rgba(24, 22, 19, 0.92);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+/* Smooth slide-out Left Drawer & Right Contextual Inspector */
+#library-drawer {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
 }
+#library-drawer.drawer-closed {
+  transform: translateX(-110%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#contextual-inspector {
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease;
+}
+#contextual-inspector.inspector-closed {
+  transform: translateX(110%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Studio Mode hides editing rails cleanly so only framing + sun + RT remain */
+#app.studio-mode #left-rail,
+#app.studio-mode #library-drawer,
+#app.studio-mode #contextual-inspector {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.96);
+}
+
+/* Optional Rule-of-Thirds Photography Composition Grid */
+#photo-grid-overlay {
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, transparent calc(33.333% - 0.5px), rgba(255, 255, 255, 0.38) 33.333%, transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgba(255, 255, 255, 0.38) 66.666%, transparent calc(66.666% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(33.333% - 0.5px), rgba(255, 255, 255, 0.38) 33.333%, transparent calc(33.333% + 0.5px), transparent calc(66.666% - 0.5px), rgba(255, 255, 255, 0.38) 66.666%, transparent calc(66.666% + 0.5px));
+}
+
+/* Dark-theme safe scrollbar & subtle helpers */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.studio-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+.studio-scroll::-webkit-scrollbar-thumb {
+  background: var(--ui-border-strong);
+  border-radius: 999px;
+}
+.studio-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 
 @keyframes rtPulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
+.rt-pulse { animation: rtPulse 1.4s ease-in-out infinite; }
 
-.rt-pulse {
-  animation: rtPulse 1.4s ease-in-out infinite;
+/* Mobile bottom-sheet adaptation for Drawer & Inspector */
+@media (max-width: 760px) {
+  #library-drawer {
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: 76px !important;
+    width: auto !important;
+    max-height: 52dvh !important;
+  }
+  #library-drawer.drawer-closed {
+    transform: translateY(115%);
+  }
+  #contextual-inspector {
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: 76px !important;
+    width: auto !important;
+    max-height: 46dvh !important;
+  }
+  #contextual-inspector.inspector-closed {
+    transform: translateY(115%);
+  }
 }

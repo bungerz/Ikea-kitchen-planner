@@ -10,23 +10,29 @@ export const SCENARIOS_KEY = 'cassiopee_ambilly_scenarios_v2';
 
 export function createDefaultState() {
   return {
-    activeTab: 'furniture',
+    toolMode: 'navigate',    // 'navigate' | 'arrange' | 'paint' | 'measure' | 'studio'
+    theme: 'light',          // 'light' (Warm Alabaster) | 'dark' (ArchViz Obsidian)
+    openDrawer: null,        // null | 'catalog' | 'kitchen' | 'paint' | 'lights' | 'prompt' | 'budget' | 'storage'
+    activeBrushPaintId: 'dv-taupe-clair',
+    activeBrushCoverage: 'accent',
+    showPhotoGrid: false,
+
     activeView: 'cutaway',
     cameraMode: 'orbit',     // 'orbit' | 'plan2d' | 'walk'
     activeBedRoom: 'ch3',
     activePaintRoom: 'ch3',
     showCeilings: false,
-    showBuilding: true,      // 4th Floor (R+4) Cassiopée Ambilly surroundings
-    showCurtains: true,      // Sheer linen architectural curtains
-    autoHideWalls: false,    // Smart exterior wall cutaway in tight rooms
-    showDoorSwings: false,   // Door & appliance swing + ergonomic overlay
-    showTmaOverlay: false,   // TMA electrical/RJ45/plumbing markers
-    postFxQuality: 'high',   // 'high' | 'fast' | 'off' (N8AO + subtle bloom)
-    sunSeason: 'summer',     // 'summer' | 'spring' | 'autumn' | 'winter'
-    sunHour: 16.0,           // 16:00 CEST
+    showBuilding: true,
+    showCurtains: true,
+    autoHideWalls: false,
+    showDoorSwings: false,
+    showTmaOverlay: false,
+    postFxQuality: 'high',
+    sunSeason: 'summer',
+    sunHour: 16.0,
     d65Override: false,
     lightingMode: 'morning',
-    activeScenario: 'A',     // 'A' | 'B' | 'C'
+    activeScenario: 'A',
 
     roomPaints: {
       ch3:    { paintId: 'original-white', coverage: 'all' },
@@ -139,7 +145,8 @@ export function serializeDesignPayload(state) {
     sunSeason: state.sunSeason,
     sunHour: state.sunHour,
     showBuilding: state.showBuilding,
-    showCurtains: state.showCurtains
+    showCurtains: state.showCurtains,
+    theme: state.theme
   };
 }
 

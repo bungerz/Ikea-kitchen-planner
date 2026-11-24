@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>CASSIOPÉE Ambilly T4 — Full Apartment 3D Studio</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231E1C19'/%3E%3Crect x='6' y='6' width='20' height='20' rx='3' fill='%23C4B8AC'/%3E%3C/svg%3E" />
+  <title>CASSIOPÉE Ambilly T4 — Spatial 3D Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231C1A17'/%3E%3Crect x='6' y='6' width='20' height='20' rx='3' fill='%23C4B8AC'/%3E%3C/svg%3E" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,100 +12,400 @@
 </head>
 <body>
   <div id="app">
-    <!-- ==================== 3D APARTMENT VIEWPORT ==================== -->
+    <!-- ==================== 100% FULL-BLEED 3D VIEWPORT ==================== -->
     <main id="viewport">
       <div id="canvas-host" class="w-full h-full"></div>
 
-      <!-- TOP-LEFT: Compact Identity + View Mode + Overlays Dropdown + Undo/Redo -->
-      <div class="absolute top-2.5 left-2.5 z-20 flex flex-wrap items-center gap-1.5 max-w-[72%]">
-        <div class="glass-pill rounded-xl px-2.5 py-1.5 flex items-center gap-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-amber-600 shrink-0"></span>
-          <div class="leading-tight">
-            <div class="text-[11px] font-bold tracking-tight text-studio-ink">CASSIOPÉE · Ambilly · R+4</div>
-            <div id="sun-hud-line" class="text-[9.5px] text-studio-muted">7 rue de la Fraternité · ☀️ 16:00</div>
+      <!-- Optional Rule-of-Thirds Studio Framing Grid -->
+      <div id="photo-grid-overlay" class="hidden absolute inset-0 z-10"></div>
+
+      <!-- ==================== SLIM TOP HEADER BAR (48px) ==================== -->
+      <header id="top-bar" class="absolute top-2.5 left-2.5 right-2.5 z-30 flex items-center justify-between gap-2 pointer-events-none">
+        <!-- LEFT: Brand + Room Jump + 3D/2D/Walk -->
+        <div class="pointer-events-auto flex items-center gap-1.5 min-w-0">
+          <div class="studio-glass rounded-2xl h-10 px-2.5 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0"></span>
+            <span class="hidden md:inline text-[11px] font-bold tracking-tight whitespace-nowrap">CASSIOPÉE R+4</span>
+            <span class="hidden md:inline w-px h-4 bg-studio-border"></span>
+            <select id="room-jump-select" aria-label="Focus Room"
+              class="bg-transparent text-[11px] font-semibold focus:outline-none cursor-pointer pr-1 max-w-[155px]"></select>
+          </div>
+
+          <div class="studio-glass rounded-2xl h-10 p-1 flex items-center gap-0.5">
+            <button data-cam-mode="orbit"  type="button" class="cam-mode-btn px-2 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer">3D</button>
+            <button data-cam-mode="plan2d" type="button" class="cam-mode-btn px-2 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer">2D</button>
+            <button data-cam-mode="walk"   type="button" class="cam-mode-btn px-2 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer">Walk</button>
           </div>
         </div>
 
-        <!-- 3D Orbit / True 2D Plan / 1st-Person Walk Switcher -->
-        <div class="glass-pill rounded-xl p-0.5 flex items-center gap-0.5">
-          <button data-cam-mode="orbit"  type="button" class="cam-mode-btn px-2 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer">3D</button>
-          <button data-cam-mode="plan2d" type="button" class="cam-mode-btn px-2 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer">2D Plan</button>
-          <button data-cam-mode="walk"   type="button" class="cam-mode-btn px-2 py-1 rounded-lg text-[10.5px] font-bold cursor-pointer">Walk</button>
+        <!-- CENTER: Live Mode Status / Interaction Hint -->
+        <div class="hidden xl:flex pointer-events-none studio-glass rounded-full h-9 px-3.5 items-center">
+          <span id="top-mode-hint" class="text-[11px] font-medium text-studio-muted whitespace-nowrap">🖐 Navigate — Drag anywhere to orbit · Click any item to inspect</span>
         </div>
 
-        <!-- Clean Collapsible Tools & Overlays Popover -->
-        <details id="tools-menu" class="relative">
-          <summary class="list-none glass-pill h-8 px-2.5 rounded-xl text-[11px] font-semibold text-studio-ink hover:bg-white cursor-pointer flex items-center gap-1.5 select-none">
-            <span>⚙ Tools</span>
-          </summary>
-          <div class="absolute left-0 mt-1.5 w-56 glass-pill rounded-2xl p-2 space-y-1 z-30 shadow-xl">
-            <button id="btn-roof" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>🏠 Ceilings</span><span id="lbl-roof" class="text-[10px] font-mono text-studio-accent">Cutaway</span>
-            </button>
-            <button id="btn-building" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>🏙️ R+4 Ambilly View</span><span id="lbl-building" class="text-[10px] font-mono text-studio-accent">ON</span>
-            </button>
-            <button id="btn-curtains" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>🪟 Sheer Curtains</span><span id="lbl-curtains" class="text-[10px] font-mono text-studio-accent">ON</span>
-            </button>
-            <button id="btn-autowalls" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>🧱 Auto-Hide Walls</span><span id="lbl-autowalls" class="text-[10px] font-mono text-studio-muted">OFF</span>
-            </button>
-            <hr class="border-studio-border my-1" />
-            <button id="btn-door-swings" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>🚪 Door Swings</span><span id="lbl-door-swings" class="text-[10px] font-mono text-studio-muted">OFF</span>
-            </button>
-            <button id="btn-tma-overlay" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>⚡ TMA Outlets/Plan</span><span id="lbl-tma-overlay" class="text-[10px] font-mono text-studio-muted">OFF</span>
-            </button>
-            <button id="btn-measure" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>📏 Tape Measure (M)</span><span id="lbl-measure" class="text-[10px] font-mono text-studio-muted">OFF</span>
-            </button>
-            <button id="btn-measure-clear" type="button" class="hidden w-full text-left px-2.5 py-1 rounded-lg hover:bg-red-50 text-[10px] font-semibold text-red-700 cursor-pointer">
-              ✕ Clear Measurements
-            </button>
-            <hr class="border-studio-border my-1" />
-            <button id="btn-snap" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>🧲 Grid & Wall Snap (G)</span><span id="lbl-snap" class="text-[10px] font-mono text-studio-accent">ON</span>
-            </button>
-            <button id="btn-postfx" type="button" class="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
-              <span>✨ AO & Bloom FX</span><span id="lbl-postfx" class="text-[10px] font-mono text-studio-accent">HIGH</span>
-            </button>
+        <!-- RIGHT: Undo/Redo + Scenarios + Layers + Theme + Live Budget + Shortcuts -->
+        <div class="pointer-events-auto flex items-center gap-1.5">
+          <div class="studio-glass rounded-2xl h-10 p-1 flex items-center gap-0.5">
+            <button id="btn-undo" type="button" title="Undo (Ctrl+Z)" class="w-7 h-7 rounded-lg text-xs hover:bg-black/5 cursor-pointer">↩</button>
+            <button id="btn-redo" type="button" title="Redo (Ctrl+Y)" class="w-7 h-7 rounded-lg text-xs hover:bg-black/5 cursor-pointer">↪</button>
+            <span class="hidden sm:inline w-px h-4 bg-studio-border mx-0.5"></span>
+            <button data-scenario="A" type="button" class="hidden sm:inline-flex items-center justify-center scenario-btn w-6 h-6 rounded-lg text-[10px] font-bold cursor-pointer">A</button>
+            <button data-scenario="B" type="button" class="hidden sm:inline-flex items-center justify-center scenario-btn w-6 h-6 rounded-lg text-[10px] font-bold cursor-pointer">B</button>
+            <button data-scenario="C" type="button" class="hidden sm:inline-flex items-center justify-center scenario-btn w-6 h-6 rounded-lg text-[10px] font-bold cursor-pointer">C</button>
           </div>
-        </details>
 
-        <!-- Undo / Redo + Scenario Slots A/B/C -->
-        <div class="glass-pill rounded-xl p-0.5 flex items-center gap-0.5">
-          <button id="btn-undo" type="button" title="Undo (Ctrl+Z)" class="w-7 h-7 rounded-lg text-xs hover:bg-black/5 cursor-pointer">↩</button>
-          <button id="btn-redo" type="button" title="Redo (Ctrl+Y)" class="w-7 h-7 rounded-lg text-xs hover:bg-black/5 cursor-pointer">↪</button>
-          <span class="w-px h-4 bg-studio-border mx-0.5"></span>
-          <button data-scenario="A" type="button" class="scenario-btn w-6 h-6 rounded-lg text-[10px] font-bold cursor-pointer">A</button>
-          <button data-scenario="B" type="button" class="scenario-btn w-6 h-6 rounded-lg text-[10px] font-bold cursor-pointer">B</button>
-          <button data-scenario="C" type="button" class="scenario-btn w-6 h-6 rounded-lg text-[10px] font-bold cursor-pointer">C</button>
+          <!-- Layers & Display Overlays Popover -->
+          <details id="layers-menu" class="relative">
+            <summary class="list-none studio-glass h-10 px-2.5 rounded-2xl text-[11px] font-bold cursor-pointer flex items-center gap-1 select-none" title="Display Layers & Overlays">
+              <span>◫</span><span class="hidden sm:inline">Layers</span>
+            </summary>
+            <div class="absolute right-0 mt-1.5 w-56 studio-glass-strong rounded-2xl p-2 space-y-1 z-40">
+              <button id="btn-roof" type="button" class="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
+                <span>🏠 Ceilings</span><span id="lbl-roof" class="text-[10px] font-mono text-studio-accent">Cutaway</span>
+              </button>
+              <button id="btn-building" type="button" class="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
+                <span>🏙️ R+4 Ambilly View</span><span id="lbl-building" class="text-[10px] font-mono text-studio-accent">ON</span>
+              </button>
+              <button id="btn-curtains" type="button" class="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
+                <span>🪟 Sheer Curtains</span><span id="lbl-curtains" class="text-[10px] font-mono text-studio-accent">ON</span>
+              </button>
+              <button id="btn-autowalls" type="button" class="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
+                <span>🧱 Auto-Hide Walls</span><span id="lbl-autowalls" class="text-[10px] font-mono text-studio-muted">OFF</span>
+              </button>
+              <hr class="border-studio-border my-1" />
+              <button id="btn-door-swings" type="button" class="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
+                <span>🚪 Door Swings</span><span id="lbl-door-swings" class="text-[10px] font-mono text-studio-muted">OFF</span>
+              </button>
+              <button id="btn-tma-overlay" type="button" class="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
+                <span>⚡ TMA Outlets/Plan</span><span id="lbl-tma-overlay" class="text-[10px] font-mono text-studio-muted">OFF</span>
+              </button>
+              <hr class="border-studio-border my-1" />
+              <button id="btn-snap" type="button" class="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
+                <span>🧲 Wall & Grid Snap</span><span id="lbl-snap" class="text-[10px] font-mono text-studio-accent">ON</span>
+              </button>
+              <button id="btn-postfx" type="button" class="w-full text-left px-2.5 py-1.5 rounded-xl hover:bg-black/5 text-[11px] font-semibold flex items-center justify-between cursor-pointer">
+                <span>✨ N8AO & Bloom</span><span id="lbl-postfx" class="text-[10px] font-mono text-studio-accent">HIGH</span>
+              </button>
+            </div>
+          </details>
+
+          <button id="top-budget-pill" type="button" class="hidden sm:flex studio-glass h-10 px-2.5 rounded-2xl text-[11px] font-mono font-bold items-center cursor-pointer" title="Open Live Budget BOM">
+            € 0.0k
+          </button>
+
+          <button id="btn-theme" type="button" title="Toggle Light / Dark Studio Theme"
+            class="studio-glass w-10 h-10 rounded-2xl flex items-center justify-center text-sm cursor-pointer">
+            🌙
+          </button>
+
+          <button id="btn-shortcuts" type="button" title="Keyboard Shortcuts (?)"
+            class="hidden sm:flex studio-glass w-10 h-10 rounded-2xl items-center justify-center text-xs font-bold cursor-pointer">
+            ?
+          </button>
         </div>
-      </div>
-
-      <!-- TOP-RIGHT: Photo Render (RT) + Sidebar Toggle -->
-      <div class="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
-        <button id="btn-raytrace" type="button"
-          class="glass-pill h-8 px-3 rounded-xl text-[11px] font-bold text-studio-ink hover:bg-white transition-all cursor-pointer flex items-center gap-1.5">
-          <span id="rt-btn-dot" class="w-2 h-2 rounded-full bg-amber-500"></span>
-          <span id="rt-btn-label">Photo Render (RT)</span>
-        </button>
-
-        <button id="btn-toggle-sidebar" type="button" title="Toggle Studio Panel"
-          class="glass-pill w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-studio-ink hover:bg-white cursor-pointer">
-          ☰
-        </button>
-      </div>
+      </header>
 
       <!-- WALKTHROUGH HINT BANNER -->
-      <div id="walk-hint" class="hidden absolute top-13 left-2.5 z-20 dark-glass-pill text-white text-[10.5px] px-3 py-1.5 rounded-xl">
-        🚶 <strong>Eye-Level Walk (1.65 m)</strong> · WASD / Arrows to walk · Drag viewport to look around
+      <div id="walk-hint" class="hidden absolute top-15 left-1/2 -translate-x-1/2 z-20 studio-glass-strong text-[11px] px-3.5 py-1.5 rounded-full">
+        🚶 <strong>Eye-Level Walk (1.65 m)</strong> · WASD / Arrows to walk · Drag to look around
       </div>
 
-      <!-- UPGRADED PHOTO RENDER (GPU PATH TRACING) HUD -->
-      <div id="rt-hud" class="hidden absolute top-12 right-2.5 z-20 dark-glass-pill text-white rounded-2xl p-3 w-[275px] space-y-2.5">
+      <!-- ==================== LEFT 54px FLOATING ICON RAIL ==================== -->
+      <nav id="left-rail" aria-label="Studio Libraries"
+        class="absolute top-16 left-2.5 z-20 studio-glass rounded-2xl p-1.5 flex flex-col items-center gap-1 transition-all duration-200">
+        <button data-drawer="catalog" type="button" title="Furniture Catalog" class="rail-btn w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold cursor-pointer">
+          <span class="text-sm leading-none">🛋</span><span>Add</span>
+        </button>
+        <button data-drawer="kitchen" type="button" title="IKEA METOD Kitchen" class="rail-btn w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold cursor-pointer">
+          <span class="text-sm leading-none">🍳</span><span>Kit.</span>
+        </button>
+        <button data-drawer="paint" type="button" title="Dulux Valentine Wall Paints" class="rail-btn w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold cursor-pointer">
+          <span class="text-sm leading-none">🎨</span><span>Paint</span>
+        </button>
+        <button data-drawer="lights" type="button" title="Ambilly Sun & TMA Lights" class="rail-btn w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold cursor-pointer">
+          <span class="text-sm leading-none">☀️</span><span>Sun</span>
+        </button>
+        <button data-drawer="prompt" type="button" title="Prompt 3D Studio & .GLB Import" class="rail-btn w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold cursor-pointer">
+          <span class="text-sm leading-none">✨</span><span>AI 3D</span>
+        </button>
+        <button data-drawer="budget" type="button" title="Budget & Shopping BOM" class="rail-btn w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold cursor-pointer">
+          <span class="text-sm leading-none">💶</span><span>BOM</span>
+        </button>
+        <button data-drawer="storage" type="button" title="Scenarios & JSON Save/Import" class="rail-btn w-10 h-10 rounded-xl flex flex-col items-center justify-center gap-0.5 text-[9px] font-bold cursor-pointer">
+          <span class="text-sm leading-none">💾</span><span>Save</span>
+        </button>
+      </nav>
+
+      <!-- ==================== COLLAPSIBLE LEFT LIBRARY DRAWER (CLOSED BY DEFAULT!) ==================== -->
+      <aside id="library-drawer"
+        class="drawer-closed absolute top-16 left-[72px] bottom-20 z-20 w-[332px] studio-glass-strong rounded-3xl flex flex-col overflow-hidden">
+        <div class="shrink-0 px-3.5 py-2.5 border-b border-studio-border flex items-center justify-between">
+          <h2 id="drawer-title" class="text-xs font-bold tracking-tight">Catalog</h2>
+          <button id="btn-close-drawer" type="button" title="Close Drawer (Esc)" class="w-7 h-7 rounded-lg hover:bg-black/5 text-xs text-studio-muted cursor-pointer">✕</button>
+        </div>
+
+        <div class="flex-1 min-h-0 overflow-y-auto studio-scroll p-3 space-y-3">
+          <!-- DRAWER 1: CATALOG (Quick Add + Tables + Beds + Sofas) -->
+          <section id="panel-catalog" class="space-y-3">
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold">Quick-Add Furniture</h3>
+                <span id="add-room-badge" class="text-[10px] font-semibold text-studio-accent">→ Séjour</span>
+              </div>
+              <div id="quick-add-grid" class="grid grid-cols-2 gap-1.5"></div>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-xs font-bold">Mobili Fiver Dining Table</h3>
+                  <p id="table-dim-badge" class="text-[10px] font-mono text-studio-accent">160 × 90 cm</p>
+                </div>
+                <button id="btn-focus-table" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg studio-subtle cursor-pointer">Focus</button>
+              </div>
+              <div class="grid grid-cols-3 gap-1">
+                <button data-ext="0" type="button" class="ext-btn py-1.5 rounded-lg text-[10px] font-bold cursor-pointer">Closed</button>
+                <button data-ext="1" type="button" class="ext-btn py-1.5 rounded-lg text-[10px] font-bold cursor-pointer">+1 Leaf</button>
+                <button data-ext="2" type="button" class="ext-btn py-1.5 rounded-lg text-[10px] font-bold cursor-pointer">Full Ext.</button>
+              </div>
+              <div id="table-finishes" class="flex flex-wrap gap-1"></div>
+              <div id="table-list" class="grid grid-cols-2 gap-1.5"></div>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <h3 class="text-xs font-bold">IKEA Queen Beds (160×200)</h3>
+              <div class="grid grid-cols-3 gap-1 p-1 studio-subtle rounded-xl">
+                <button data-bed-room="ch3" type="button" class="bed-room-btn py-1 rounded-lg text-[10px] font-bold cursor-pointer">Ch. 3</button>
+                <button data-bed-room="ch1" type="button" class="bed-room-btn py-1 rounded-lg text-[10px] font-bold cursor-pointer">Ch. 1</button>
+                <button data-bed-room="ch2" type="button" class="bed-room-btn py-1 rounded-lg text-[10px] font-bold cursor-pointer">Ch. 2</button>
+              </div>
+              <div id="bed-finishes" class="flex flex-wrap gap-1"></div>
+              <div id="bed-list" class="grid grid-cols-2 gap-1.5 max-h-[220px] overflow-y-auto studio-scroll pr-0.5"></div>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold">IKEA Living Sofas</h3>
+                <button id="btn-focus-sofa" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg studio-subtle cursor-pointer">Focus</button>
+              </div>
+              <div class="grid grid-cols-3 gap-1 p-1 studio-subtle rounded-xl">
+                <button data-chaise="none"  type="button" class="chaise-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">3-Seat</button>
+                <button data-chaise="left"  type="button" class="chaise-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Chaise L</button>
+                <button data-chaise="right" type="button" class="chaise-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Chaise R</button>
+              </div>
+              <div id="sofa-fabrics" class="flex flex-wrap gap-1"></div>
+              <div id="sofa-list" class="grid grid-cols-2 gap-1.5"></div>
+            </div>
+          </section>
+
+          <!-- DRAWER 2: IKEA METOD KITCHEN -->
+          <section id="panel-kitchen" class="hidden space-y-3">
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold">IKEA METOD Doors (6)</h3>
+                <button id="btn-focus-kitchen" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg studio-subtle cursor-pointer">Focus</button>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <button id="btn-pin-combo" type="button" class="flex-1 py-1.5 rounded-xl studio-subtle text-[10.5px] font-semibold cursor-pointer">Pin Combo A</button>
+                <button id="btn-swap-combo" type="button" class="hidden flex-1 py-1.5 rounded-xl studio-btn-active text-[10.5px] font-semibold cursor-pointer">⇄ Swap A/B (Space)</button>
+              </div>
+              <div id="door-list" class="space-y-1.5"></div>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <h3 class="text-xs font-bold">IKEA Countertops (12)</h3>
+              <div id="countertop-grid" class="grid grid-cols-2 gap-1.5"></div>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <h3 class="text-xs font-bold">Claustra, Backsplash & Hardware</h3>
+              <div class="grid grid-cols-3 gap-1 p-1 studio-subtle rounded-xl">
+                <button data-cl-h="full" type="button" class="cl-h-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Full</button>
+                <button data-cl-h="half" type="button" class="cl-h-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Half</button>
+                <button data-cl-h="off"  type="button" class="cl-h-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Off</button>
+              </div>
+              <div class="grid grid-cols-4 gap-1">
+                <button data-cl-f="oak"    type="button" class="cl-f-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Oak</button>
+                <button data-cl-f="walnut" type="button" class="cl-f-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Walnut</button>
+                <button data-cl-f="black"  type="button" class="cl-f-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Black</button>
+                <button data-cl-f="white"  type="button" class="cl-f-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">White</button>
+              </div>
+              <div class="grid grid-cols-2 gap-2 pt-1 border-t border-studio-border">
+                <div class="grid grid-cols-2 gap-1">
+                  <button data-bs="white"     type="button" class="bs-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">White</button>
+                  <button data-bs="subway"    type="button" class="bs-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Subway</button>
+                  <button data-bs="matching"  type="button" class="bs-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Match</button>
+                  <button data-bs="warmStone" type="button" class="bs-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Stone</button>
+                </div>
+                <div class="grid grid-cols-1 gap-1">
+                  <button data-hw="black" type="button" class="hw-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Matte Black</button>
+                  <button data-hw="brass" type="button" class="hw-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Brushed Brass</button>
+                  <button data-hw="steel" type="button" class="hw-btn py-1 rounded-lg text-[10px] font-semibold cursor-pointer">Stainless</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- DRAWER 3: DULUX WALL PAINTS -->
+          <section id="panel-paint" class="hidden space-y-3">
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <div class="grid grid-cols-2 gap-1.5">
+                <button id="btn-paint-reset-all" type="button" class="py-1.5 px-2 rounded-xl studio-subtle text-[10.5px] font-semibold cursor-pointer">↺ All White</button>
+                <button id="btn-paint-curated" type="button" class="py-1.5 px-2 rounded-xl bg-amber-500/15 border border-amber-500/35 text-studio-accent text-[10.5px] font-bold cursor-pointer">✨ Curated Mix</button>
+              </div>
+              <div id="paint-room-grid" class="grid grid-cols-2 gap-1.5"></div>
+              <div class="studio-subtle rounded-xl p-2 space-y-1.5">
+                <div class="text-[10.5px] font-semibold">Coverage: <span id="paint-active-room-lbl">Ch. 3</span></div>
+                <div class="grid grid-cols-2 gap-1">
+                  <button data-cov="all"    type="button" class="cov-btn py-1 rounded-lg text-[10px] font-bold cursor-pointer">All Walls</button>
+                  <button data-cov="accent" type="button" class="cov-btn py-1 rounded-lg text-[10px] font-bold cursor-pointer">Accent Only</button>
+                </div>
+              </div>
+            </div>
+            <div id="paint-swatch-sections" class="space-y-2"></div>
+          </section>
+
+          <!-- DRAWER 4: AMBILLY SUN & TMA LIGHTS -->
+          <section id="panel-lights" class="hidden space-y-3">
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-xs font-bold">☀️ Ambilly R+4 Sun</h3>
+                  <p id="sun-angles-val" class="text-[9.5px] font-mono text-studio-muted">Az 242° · Elev 46°</p>
+                </div>
+                <button id="btn-sun-play" type="button" class="px-2.5 py-1 rounded-lg studio-btn-active text-[10px] font-bold cursor-pointer">▶ Play</button>
+              </div>
+              <div id="season-grid" class="grid grid-cols-2 gap-1"></div>
+              <div class="studio-subtle rounded-xl p-2 space-y-1">
+                <div class="flex items-center justify-between text-[10.5px]">
+                  <span class="font-bold">Local Time</span>
+                  <span id="sun-time-val" class="font-mono font-bold text-studio-accent">16:00</span>
+                </div>
+                <input id="sun-hour-slider" type="range" min="5.5" max="22.5" step="0.25" value="16" class="w-full accent-amber-500 cursor-pointer" />
+                <div class="flex justify-between text-[9px] font-mono text-studio-muted">
+                  <span id="sun-sunrise-lbl">Sunrise 05:49</span>
+                  <span id="sun-sunset-lbl">Sunset 21:27</span>
+                </div>
+                <div class="grid grid-cols-4 gap-1 pt-1">
+                  <button data-sun-quick="9.5"  type="button" class="sun-q-btn py-1 rounded-lg studio-surface text-[9.5px] font-semibold cursor-pointer">09:30</button>
+                  <button data-sun-quick="13.5" type="button" class="sun-q-btn py-1 rounded-lg studio-surface text-[9.5px] font-semibold cursor-pointer">13:30</button>
+                  <button data-sun-quick="18.5" type="button" class="sun-q-btn py-1 rounded-lg studio-surface text-[9.5px] font-semibold cursor-pointer">18:30</button>
+                  <button data-sun-quick="21.5" type="button" class="sun-q-btn py-1 rounded-lg studio-surface text-[9.5px] font-semibold cursor-pointer">🌙</button>
+                </div>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] text-studio-muted">Color Check</span>
+                <button id="btn-d65-toggle" type="button" class="px-2 py-1 rounded-lg studio-surface text-[10px] font-semibold cursor-pointer">☁️ Neutral D65: OFF</button>
+              </div>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <h3 class="text-xs font-bold">TMA Light Fixtures</h3>
+              <div id="fixture-room-list" class="space-y-1.5"></div>
+            </div>
+          </section>
+
+          <!-- DRAWER 5: AI PROMPT 3D & GLB IMPORTER -->
+          <section id="panel-prompt" class="hidden space-y-3">
+            <div class="bg-gradient-to-br from-[#1C1A17] to-[#322C25] text-white rounded-2xl p-3 space-y-2 border border-white/10">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold">✨ Prompt 3D Studio</span>
+                <span id="ai-mode-badge" class="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300">Local CAD</span>
+              </div>
+              <form id="prompt-form" class="space-y-2">
+                <textarea id="prompt-input" rows="2" placeholder="e.g. Arched brass floor mirror in ch3, or 'make it 30cm wider'…"
+                  class="w-full rounded-xl bg-white/10 border border-white/20 px-2.5 py-2 text-xs text-white placeholder-white/45 focus:outline-none focus:border-amber-400 resize-none"></textarea>
+                <button id="btn-prompt-submit" type="submit" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold cursor-pointer">
+                  ✨ Modelise & Apply
+                </button>
+              </form>
+              <div id="prompt-feedback" class="hidden text-[10px] bg-white/10 rounded-xl px-2.5 py-1.5 text-amber-200"></div>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <div class="text-[10px] font-bold uppercase tracking-wider text-studio-muted">1-Click Designer Recipes</div>
+              <div id="prompt-examples" class="flex flex-wrap gap-1"></div>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <h3 class="text-xs font-bold">📦 Import .GLB / .GLTF</h3>
+              <label class="block w-full py-2 px-3 rounded-xl border border-dashed border-studio-accent/60 studio-subtle text-center text-[11px] font-semibold cursor-pointer">
+                + Choose .glb / .gltf File (IndexedDB)
+                <input id="glb-file-input" type="file" accept=".glb,.gltf" class="hidden" />
+              </label>
+            </div>
+
+            <div class="studio-surface rounded-2xl p-2.5 space-y-2">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold">Prompted Library</h3>
+                <span id="custom-lib-count" class="text-[10px] font-mono text-studio-muted">0 saved</span>
+              </div>
+              <div id="custom-lib-list" class="space-y-1.5 text-[11px] text-studio-muted"></div>
+            </div>
+
+            <details class="studio-surface rounded-2xl p-2.5">
+              <summary class="text-[11px] font-bold cursor-pointer select-none">⚙️ Live LLM Engine (BYOK)</summary>
+              <div class="mt-2 space-y-1.5 text-[10.5px]">
+                <select id="ai-provider" class="w-full rounded-lg studio-subtle px-2 py-1.5 text-[11px]">
+                  <option value="local">Built-in Local CAD (Free)</option>
+                  <option value="gemini">Google Gemini (gemini-2.5-flash)</option>
+                  <option value="openai">OpenAI-Compatible</option>
+                </select>
+                <input id="ai-api-key" type="password" placeholder="Paste API key (localStorage only)" class="w-full rounded-lg studio-subtle px-2 py-1.5 text-[11px]" />
+                <div class="grid grid-cols-2 gap-1.5">
+                  <input id="ai-model" type="text" placeholder="gemini-2.5-flash" class="rounded-lg studio-subtle px-2 py-1.5 text-[11px]" />
+                  <button id="btn-ai-save" type="button" class="rounded-lg studio-btn-active font-bold text-[11px] cursor-pointer">Save</button>
+                </div>
+              </div>
+            </details>
+          </section>
+
+          <!-- DRAWER 6: LIVE BUDGET & SHOPPING BOM -->
+          <section id="panel-budget" class="hidden space-y-3">
+            <div id="budget-content" class="space-y-3"></div>
+          </section>
+
+          <!-- DRAWER 7: SCENARIOS & STORAGE -->
+          <section id="panel-storage" class="hidden space-y-3">
+            <div class="studio-surface rounded-2xl p-3 space-y-2.5">
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-bold">Design Scenarios (A / B / C)</h3>
+                <button id="btn-save-scenario" type="button" class="px-2.5 py-1 rounded-lg studio-btn-active text-[10px] font-bold cursor-pointer">💾 Save Active Slot</button>
+              </div>
+              <p class="text-[10px] text-studio-muted leading-snug">Compare full apartment design variants cleanly using slots A, B, and C in the top bar.</p>
+            </div>
+            <div class="studio-surface rounded-2xl p-3 space-y-2">
+              <h3 class="text-xs font-bold">JSON Backup & Restore</h3>
+              <div class="grid grid-cols-2 gap-1.5">
+                <button id="btn-export-json" type="button" class="py-2 rounded-xl studio-subtle text-[10.5px] font-bold cursor-pointer">↓ Export JSON</button>
+                <label class="py-2 rounded-xl studio-subtle text-[10.5px] font-bold text-center cursor-pointer">
+                  ↑ Import JSON
+                  <input id="json-import-input" type="file" accept=".json,application/json" class="hidden" />
+                </label>
+              </div>
+              <button id="btn-reset-layout" type="button" class="w-full py-2 rounded-xl bg-red-500/12 border border-red-500/30 text-red-600 text-[10.5px] font-bold cursor-pointer">
+                ↺ Reset Apartment to Defaults
+              </button>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <!-- ==================== FLOATING RIGHT CONTEXTUAL INSPECTOR ==================== -->
+      <aside id="contextual-inspector"
+        class="inspector-closed absolute top-16 right-2.5 z-20 w-[300px] max-h-[calc(100dvh-152px)] studio-glass-strong rounded-3xl flex flex-col overflow-hidden">
+        <div class="shrink-0 px-3.5 py-2.5 border-b border-studio-border flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <h2 id="insp-title" class="text-xs font-bold truncate">Selection</h2>
+            <p id="insp-subtitle" class="text-[9.5px] font-mono text-studio-muted truncate"></p>
+          </div>
+          <button id="btn-close-inspector" type="button" title="Deselect (Esc)" class="w-7 h-7 rounded-lg hover:bg-black/5 text-xs text-studio-muted shrink-0 cursor-pointer">✕</button>
+        </div>
+        <div id="insp-body" class="flex-1 min-h-0 overflow-y-auto studio-scroll p-3"></div>
+      </aside>
+
+      <!-- ==================== STUDIO PHOTO RENDER (RT) FLOATING HUD ==================== -->
+      <div id="rt-hud" class="hidden absolute top-16 right-2.5 z-30 bg-[#181715]/92 backdrop-blur-xl text-white border border-white/15 shadow-2xl rounded-3xl p-3.5 w-[275px] space-y-2.5">
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-1.5">
             <span id="rt-status-dot" class="w-2 h-2 rounded-full bg-amber-400 rt-pulse"></span>
@@ -116,13 +416,11 @@
         <div class="w-full h-1.5 bg-white/15 rounded-full overflow-hidden">
           <div id="rt-progress-bar" class="h-full bg-amber-400 transition-all duration-150" style="width:0%"></div>
         </div>
-        <!-- Quality Profiles -->
         <div class="grid grid-cols-3 gap-1">
           <button data-rt-prof="fast"     type="button" class="rt-prof-btn py-1 rounded-lg text-[10px] font-semibold bg-white/10 hover:bg-white/20 cursor-pointer">Fast</button>
           <button data-rt-prof="balanced" type="button" class="rt-prof-btn py-1 rounded-lg text-[10px] font-semibold bg-white/10 hover:bg-white/20 cursor-pointer">Balanced</button>
           <button data-rt-prof="photo"    type="button" class="rt-prof-btn py-1 rounded-lg text-[10px] font-semibold bg-white/10 hover:bg-white/20 cursor-pointer">Studio Photo</button>
         </div>
-        <!-- Live Exposure EV Trim (instant, zero sample reset!) -->
         <div class="space-y-1">
           <div class="flex items-center justify-between text-[10px] text-white/80">
             <span>Exposure Trim (Live)</span>
@@ -130,376 +428,50 @@
           </div>
           <input id="rt-ev-slider" type="range" min="-1.2" max="1.2" step="0.1" value="0" class="w-full accent-amber-400 cursor-pointer" />
         </div>
-        <!-- Denoise Mode + Interior Lamps -->
         <div class="grid grid-cols-2 gap-1.5">
           <button id="btn-rt-denoise" type="button" class="py-1 rounded-lg text-[10px] font-semibold bg-white/15 hover:bg-white/25 cursor-pointer">Denoise: Subtle</button>
           <button id="btn-rt-lamps"   type="button" class="py-1 rounded-lg text-[10px] font-semibold bg-white/15 hover:bg-white/25 cursor-pointer">Lamps: Auto</button>
         </div>
-        <button id="btn-rt-save" type="button" class="w-full py-1.5 rounded-lg text-[10.5px] font-bold bg-amber-400 text-amber-950 hover:bg-amber-300 cursor-pointer">
-          📷 Save High-Res PNG
-        </button>
-      </div>
-
-      <!-- FLOATING CONTEXTUAL SELECTION BAR -->
-      <div id="selection-hud" class="hidden absolute bottom-14 left-1/2 -translate-x-1/2 z-20 dark-glass-pill text-white rounded-2xl px-3 py-2 flex flex-wrap items-center justify-center gap-2 max-w-[95%]">
-        <div class="flex flex-col leading-tight pr-1.5 border-r border-white/15">
-          <span id="sel-name" class="text-[11.5px] font-bold text-amber-300 truncate max-w-[190px]">Selected Item</span>
-          <span id="sel-clearance" class="text-[9.5px] font-mono text-white/80">Drag on floor · Orange knob to rotate</span>
-        </div>
-        <div class="flex items-center gap-1">
-          <button id="sel-rot-90" type="button" title="Rotate 90° (R)" class="px-2 py-1 rounded-lg bg-white/12 hover:bg-white/25 text-[11px] font-semibold cursor-pointer">↻ 90°</button>
-          <button id="sel-rot-15" type="button" title="Rotate 15° (Shift+R)" class="px-2 py-1 rounded-lg bg-white/12 hover:bg-white/25 text-[11px] font-semibold cursor-pointer">↻ 15°</button>
-          <label class="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-white/10 text-[9.5px] font-mono" title="Elevation Y (cm)">
-            <span>Y:</span>
-            <input id="sel-y-slider" type="range" min="0" max="180" step="5" value="0" class="w-12 accent-amber-400 cursor-pointer" />
-            <span id="sel-y-val">0</span>
-          </label>
-          <button id="sel-extend" type="button" class="hidden px-2.5 py-1 rounded-lg bg-amber-400 text-amber-950 hover:bg-amber-300 text-[11px] font-bold cursor-pointer">Extend</button>
-          <button id="sel-dup" type="button" title="Duplicate Item" class="px-2 py-1 rounded-lg bg-white/12 hover:bg-white/25 text-[11px] font-semibold cursor-pointer">⧉</button>
-          <button id="sel-del" type="button" title="Delete Item (Del)" class="px-2 py-1 rounded-lg bg-red-500/80 hover:bg-red-500 text-[11px] font-semibold cursor-pointer">🗑</button>
-          <button id="sel-close" type="button" title="Deselect (Esc)" class="px-1.5 py-1 rounded-lg hover:bg-white/15 text-xs text-white/70 cursor-pointer">✕</button>
+        <div class="flex items-center justify-between text-[9.5px] font-mono text-white/55">
+          <span>GPU Engine</span>
+          <span id="sidebar-rt-gpu">WebGL2 BVH</span>
         </div>
       </div>
 
-      <!-- BOTTOM ROOM FOCUS NAVIGATION BAR -->
-      <div class="absolute bottom-2.5 left-2.5 right-2.5 z-20 flex justify-center pointer-events-none">
-        <div id="room-nav" class="pointer-events-auto glass-pill rounded-2xl p-1 flex items-center gap-1 overflow-x-auto no-scrollbar max-w-full"></div>
+      <!-- ==================== BOTTOM-CENTER MODE DOCK & CONTEXTUAL SUB-BAR ==================== -->
+      <div class="absolute bottom-3 left-2.5 right-2.5 z-30 flex flex-col items-center gap-2 pointer-events-none">
+        <!-- Contextual Mode Sub-Bar (Paint Brush / Measure Clear / Studio Sun & RT) -->
+        <div id="mode-subbar" class="hidden pointer-events-auto studio-glass-strong rounded-2xl px-3 py-1.5 max-w-full"></div>
+
+        <!-- Primary 5-Mode Dock -->
+        <div id="mode-dock" class="pointer-events-auto studio-glass-strong rounded-2xl p-1 flex items-center gap-1 max-w-full overflow-x-auto no-scrollbar"></div>
+      </div>
+
+      <!-- ==================== KEYBOARD SHORTCUTS MODAL (?) ==================== -->
+      <div id="shortcuts-modal" class="hidden fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="studio-glass-strong rounded-3xl p-5 w-full max-w-md space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-bold">Spatial Studio Shortcuts</h2>
+            <button id="btn-close-shortcuts" type="button" class="w-7 h-7 rounded-lg hover:bg-black/5 text-xs cursor-pointer">✕</button>
+          </div>
+          <div class="grid grid-cols-2 gap-2 text-[11px]">
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Navigate (Safe Orbit)</span><kbd class="font-mono font-bold">1</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Arrange (Move Items)</span><kbd class="font-mono font-bold">2</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Paint Brush Walls</span><kbd class="font-mono font-bold">3</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>3D Tape Measure</span><kbd class="font-mono font-bold">4 / M</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Photo Render Studio</span><kbd class="font-mono font-bold">5</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Rotate Selected</span><kbd class="font-mono font-bold">R / ⇧R</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Undo / Redo</span><kbd class="font-mono font-bold">⌘Z / ⌘Y</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Swap Kitchen A/B</span><kbd class="font-mono font-bold">Space</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Free Drag (No Snap)</span><kbd class="font-mono font-bold">Hold Alt</kbd></div>
+            <div class="studio-subtle rounded-xl p-2 flex justify-between"><span>Orbit in Any Mode</span><kbd class="font-mono font-bold">Right-Drag</kbd></div>
+          </div>
+        </div>
       </div>
 
       <!-- TOAST NOTIFICATION -->
-      <div id="toast" class="pointer-events-none opacity-0 transition-opacity duration-200 absolute top-14 left-1/2 -translate-x-1/2 z-30 dark-glass-pill text-white text-[11.5px] font-medium px-3.5 py-1.5 rounded-full whitespace-nowrap"></div>
+      <div id="toast" class="pointer-events-none opacity-0 transition-opacity duration-200 absolute top-15 left-1/2 -translate-x-1/2 z-40 bg-[#1C1A17]/92 text-white text-[11.5px] font-medium px-3.5 py-1.5 rounded-full shadow-lg whitespace-nowrap"></div>
     </main>
-
-    <!-- ==================== RIGHT STUDIO CONTROL PANEL ==================== -->
-    <aside id="sidebar">
-      <!-- Primary 6-Tab Bar -->
-      <div class="shrink-0 bg-white border-b border-studio-border px-2 pt-2.5 pb-2">
-        <div class="grid grid-cols-6 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
-          <button data-tab="furniture" type="button" class="tab-btn py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer">Furn.</button>
-          <button data-tab="paint"     type="button" class="tab-btn py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer">Paint</button>
-          <button data-tab="kitchen"   type="button" class="tab-btn py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer">Kitchen</button>
-          <button data-tab="lights"    type="button" class="tab-btn py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer">Sun</button>
-          <button data-tab="prompt"    type="button" class="tab-btn py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer">✨ AI</button>
-          <button data-tab="budget"    type="button" class="tab-btn py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer">€ BOM</button>
-        </div>
-      </div>
-
-      <!-- Scrollable Tab Contents -->
-      <div id="sidebar-scroll" class="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
-
-        <!-- ========== TAB 1: FURNITURE ========== -->
-        <section id="panel-furniture" class="space-y-3">
-          <div class="bg-amber-50/90 border border-amber-200/80 rounded-xl px-2.5 py-2 text-[10.5px] text-amber-950">
-            👆 <strong>Drag any item</strong> (wall-snaps automatically; hold <kbd class="px-1 bg-white rounded border border-amber-300 font-mono text-[9.5px]">Alt</kbd> for free move) · Drag orange knob or press <kbd class="px-1 bg-white rounded border border-amber-300 font-mono text-[9.5px]">R</kbd> to rotate
-          </div>
-
-          <!-- 1A. MOBILI FIVER EXTENSIBLE TABLES -->
-          <div id="card-table" class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-xs font-bold text-studio-ink">Mobili Fiver Extensible Table</h2>
-                <p class="text-[10px] text-studio-muted">Walnut default · Test closed vs extended clearance</p>
-              </div>
-              <button id="btn-focus-table" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-studio-subtle hover:bg-studio-border cursor-pointer">Focus</button>
-            </div>
-            <div class="bg-studio-bg rounded-xl p-2 border border-studio-border space-y-1.5">
-              <div class="flex items-center justify-between text-[10.5px]">
-                <span class="font-semibold text-studio-ink">Table Extension</span>
-                <span id="table-dim-badge" class="font-mono font-bold text-studio-accent">160 × 90 cm</span>
-              </div>
-              <div class="grid grid-cols-3 gap-1">
-                <button data-ext="0" type="button" class="ext-btn py-1.5 rounded-lg text-[10.5px] font-semibold border transition-all cursor-pointer">Closed</button>
-                <button data-ext="1" type="button" class="ext-btn py-1.5 rounded-lg text-[10.5px] font-semibold border transition-all cursor-pointer">+1 Leaf</button>
-                <button data-ext="2" type="button" class="ext-btn py-1.5 rounded-lg text-[10.5px] font-semibold border transition-all cursor-pointer">Full Ext.</button>
-              </div>
-            </div>
-            <div id="table-finishes" class="flex flex-wrap gap-1.5"></div>
-            <div id="table-list" class="grid grid-cols-2 gap-1.5"></div>
-          </div>
-
-          <!-- 1B. IKEA QUEEN SIZE BEDS -->
-          <div id="card-bed" class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
-            <div>
-              <h2 class="text-xs font-bold text-studio-ink">IKEA Queen Beds (160×200)</h2>
-              <p class="text-[10px] text-studio-muted">12 official IKEA Queen frames · Per bedroom</p>
-            </div>
-            <div class="grid grid-cols-3 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
-              <button data-bed-room="ch3" type="button" class="bed-room-btn py-1.5 rounded-lg text-[10.5px] font-bold cursor-pointer">Ch. 3 Master</button>
-              <button data-bed-room="ch1" type="button" class="bed-room-btn py-1.5 rounded-lg text-[10.5px] font-bold cursor-pointer">Chambre 1</button>
-              <button data-bed-room="ch2" type="button" class="bed-room-btn py-1.5 rounded-lg text-[10.5px] font-bold cursor-pointer">Chambre 2</button>
-            </div>
-            <div id="bed-finishes" class="flex flex-wrap gap-1.5"></div>
-            <div id="bed-list" class="grid grid-cols-2 gap-1.5 max-h-[260px] overflow-y-auto pr-0.5"></div>
-          </div>
-
-          <!-- 1C. IKEA LIVING ROOM SOFAS -->
-          <div id="card-sofa" class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
-            <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-xs font-bold text-studio-ink">IKEA Living Room Sofas</h2>
-                <p class="text-[10px] text-studio-muted">8 IKEA France series · Reversible chaise</p>
-              </div>
-              <button id="btn-focus-sofa" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-studio-subtle hover:bg-studio-border cursor-pointer">Focus</button>
-            </div>
-            <div class="grid grid-cols-3 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
-              <button data-chaise="none"  type="button" class="chaise-btn py-1 rounded-lg text-[10.5px] font-semibold cursor-pointer">3-Seater</button>
-              <button data-chaise="left"  type="button" class="chaise-btn py-1 rounded-lg text-[10.5px] font-semibold cursor-pointer">Chaise Left</button>
-              <button data-chaise="right" type="button" class="chaise-btn py-1 rounded-lg text-[10.5px] font-semibold cursor-pointer">Chaise Right</button>
-            </div>
-            <div id="sofa-fabrics" class="flex flex-wrap gap-1.5"></div>
-            <div id="sofa-list" class="grid grid-cols-2 gap-1.5"></div>
-          </div>
-
-          <!-- 1D. QUICK-ADD MORE FURNITURE -->
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <h2 class="text-xs font-bold text-studio-ink">Add Furniture to Room</h2>
-              <span id="add-room-badge" class="text-[10px] font-semibold text-studio-accent">→ Séjour</span>
-            </div>
-            <div id="quick-add-grid" class="grid grid-cols-2 gap-1.5"></div>
-          </div>
-        </section>
-
-        <!-- ========== TAB 2: DULUX VALENTINE WALL PAINTS ========== -->
-        <section id="panel-paint" class="hidden space-y-3">
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
-            <div>
-              <h2 class="text-xs font-bold text-studio-ink">Wall Paint · Dulux Valentine</h2>
-              <p class="text-[10px] text-studio-muted">Click any wall in 3D or pick a room below</p>
-            </div>
-            <div class="grid grid-cols-2 gap-1.5">
-              <button id="btn-paint-reset-all" type="button" class="py-1.5 px-2 rounded-xl border border-studio-border bg-studio-bg hover:bg-studio-subtle text-[10.5px] font-semibold cursor-pointer">
-                ↺ All Original White
-              </button>
-              <button id="btn-paint-curated" type="button" class="py-1.5 px-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-[10.5px] font-semibold text-amber-950 cursor-pointer">
-                ✨ Try Curated Mix
-              </button>
-            </div>
-            <div>
-              <div class="text-[10px] font-bold uppercase tracking-wider text-studio-muted mb-1.5">Select Room to Paint</div>
-              <div id="paint-room-grid" class="grid grid-cols-2 gap-1.5"></div>
-            </div>
-            <div class="bg-studio-bg rounded-xl p-2 border border-studio-border space-y-1.5">
-              <div class="flex items-center justify-between">
-                <span class="text-[10.5px] font-semibold text-studio-ink">Coverage: <span id="paint-active-room-lbl">Ch. 3 Master</span></span>
-              </div>
-              <div class="grid grid-cols-2 gap-1">
-                <button data-cov="all"    type="button" class="cov-btn py-1.5 rounded-lg text-[10.5px] font-semibold border cursor-pointer">All Walls</button>
-                <button data-cov="accent" type="button" class="cov-btn py-1.5 rounded-lg text-[10.5px] font-semibold border cursor-pointer">Accent Wall Only</button>
-              </div>
-              <p id="paint-room-hint" class="text-[10px] text-studio-muted leading-snug"></p>
-            </div>
-          </div>
-          <div id="paint-swatch-sections" class="space-y-2.5"></div>
-        </section>
-
-        <!-- ========== TAB 3: IKEA METOD KITCHEN STUDIO ========== -->
-        <section id="panel-kitchen" class="hidden space-y-3">
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <div>
-                <h2 class="text-xs font-bold text-studio-ink">IKEA METOD Beige Doors (6)</h2>
-                <p class="text-[10px] text-studio-muted">Exact U-kitchen with recessed undermount sink</p>
-              </div>
-              <button id="btn-focus-kitchen" type="button" class="text-[10px] font-semibold px-2 py-1 rounded-lg bg-studio-subtle hover:bg-studio-border cursor-pointer">Focus</button>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <button id="btn-pin-combo" type="button" class="flex-1 py-1.5 px-2 rounded-xl border border-studio-border text-[10.5px] font-semibold hover:bg-studio-subtle cursor-pointer">Pin Combo A</button>
-              <button id="btn-swap-combo" type="button" class="hidden flex-1 py-1.5 px-2 rounded-xl bg-studio-ink text-white text-[10.5px] font-semibold cursor-pointer">⇄ Swap A/B (Space)</button>
-            </div>
-            <div id="door-list" class="space-y-1.5"></div>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <h2 class="text-xs font-bold text-studio-ink">IKEA Countertops (12)</h2>
-            <div id="countertop-grid" class="grid grid-cols-2 gap-1.5"></div>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
-            <h2 class="text-xs font-bold text-studio-ink">Claustra (on 120 cm Half-Wall)</h2>
-            <div class="grid grid-cols-3 gap-1 p-1 bg-studio-subtle rounded-xl border border-studio-border">
-              <button data-cl-h="full" type="button" class="cl-h-btn py-1.5 rounded-lg text-[10.5px] font-semibold cursor-pointer">Full Ceiling</button>
-              <button data-cl-h="half" type="button" class="cl-h-btn py-1.5 rounded-lg text-[10.5px] font-semibold cursor-pointer">Half Height</button>
-              <button data-cl-h="off"  type="button" class="cl-h-btn py-1.5 rounded-lg text-[10.5px] font-semibold cursor-pointer">Off</button>
-            </div>
-            <div class="grid grid-cols-4 gap-1.5">
-              <button data-cl-f="oak"    type="button" class="cl-f-btn py-1.5 rounded-lg border text-[10px] font-semibold cursor-pointer">Oak</button>
-              <button data-cl-f="walnut" type="button" class="cl-f-btn py-1.5 rounded-lg border text-[10px] font-semibold cursor-pointer">Walnut</button>
-              <button data-cl-f="black"  type="button" class="cl-f-btn py-1.5 rounded-lg border text-[10px] font-semibold cursor-pointer">Black</button>
-              <button data-cl-f="white"  type="button" class="cl-f-btn py-1.5 rounded-lg border text-[10px] font-semibold cursor-pointer">White</button>
-            </div>
-            <div class="grid grid-cols-2 gap-2 pt-1 border-t border-studio-border">
-              <div>
-                <div class="text-[10px] font-bold uppercase text-studio-muted mb-1">Backsplash</div>
-                <div class="grid grid-cols-2 gap-1">
-                  <button data-bs="white"     type="button" class="bs-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">White</button>
-                  <button data-bs="subway"    type="button" class="bs-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Subway</button>
-                  <button data-bs="matching"  type="button" class="bs-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Match Top</button>
-                  <button data-bs="warmStone" type="button" class="bs-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Stone</button>
-                </div>
-              </div>
-              <div>
-                <div class="text-[10px] font-bold uppercase text-studio-muted mb-1">Hardware</div>
-                <div class="grid grid-cols-1 gap-1">
-                  <button data-hw="black" type="button" class="hw-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Matte Black</button>
-                  <button data-hw="brass" type="button" class="hw-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Brushed Brass</button>
-                  <button data-hw="steel" type="button" class="hw-btn py-1 rounded-lg border text-[10px] font-semibold cursor-pointer">Stainless</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ========== TAB 4: AMBILLY R+4 SUN, TMA LIGHTS & STORAGE ========== -->
-        <section id="panel-lights" class="hidden space-y-3">
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
-            <div class="flex items-center justify-between gap-2">
-              <div>
-                <h2 class="text-xs font-bold text-studio-ink">☀️ Ambilly R+4 Sun Simulator</h2>
-                <p class="text-[10px] text-studio-muted">46.1941°N, 6.2230°E · Loggia SSW · Séjour WNW</p>
-              </div>
-              <button id="btn-sun-play" type="button" class="px-2.5 py-1 rounded-lg bg-studio-ink text-white text-[10px] font-bold cursor-pointer">▶ Play Day</button>
-            </div>
-            <div id="season-grid" class="grid grid-cols-2 gap-1"></div>
-            <div class="bg-studio-bg rounded-xl p-2.5 border border-studio-border space-y-1.5">
-              <div class="flex items-center justify-between text-[11px]">
-                <span class="font-bold text-studio-ink">Local Time: <span id="sun-time-val" class="font-mono text-studio-accent">16:00</span></span>
-                <span id="sun-angles-val" class="text-[10px] font-mono text-studio-muted">Az 242° · Elev 46°</span>
-              </div>
-              <input id="sun-hour-slider" type="range" min="5.5" max="22.5" step="0.25" value="16" class="w-full accent-amber-600 cursor-pointer" />
-              <div class="flex items-center justify-between text-[9.5px] text-studio-muted font-mono">
-                <span id="sun-sunrise-lbl">Sunrise 05:49</span>
-                <span id="sun-sunset-lbl">Sunset 21:27</span>
-              </div>
-              <div class="grid grid-cols-4 gap-1 pt-1">
-                <button data-sun-quick="9.5"  type="button" class="sun-q-btn py-1 rounded-lg bg-white border border-studio-border hover:bg-studio-subtle text-[9.5px] font-semibold cursor-pointer">09:30</button>
-                <button data-sun-quick="13.5" type="button" class="sun-q-btn py-1 rounded-lg bg-white border border-studio-border hover:bg-studio-subtle text-[9.5px] font-semibold cursor-pointer">13:30</button>
-                <button data-sun-quick="18.5" type="button" class="sun-q-btn py-1 rounded-lg bg-white border border-studio-border hover:bg-studio-subtle text-[9.5px] font-semibold cursor-pointer">18:30</button>
-                <button data-sun-quick="21.5" type="button" class="sun-q-btn py-1 rounded-lg bg-white border border-studio-border hover:bg-studio-subtle text-[9.5px] font-semibold cursor-pointer">🌙 Night</button>
-              </div>
-            </div>
-            <div class="flex items-center justify-between gap-2 pt-0.5">
-              <span class="text-[10.5px] font-medium text-studio-muted">Color-Calibration Mode</span>
-              <button id="btn-d65-toggle" type="button" class="px-2.5 py-1 rounded-lg border border-studio-border text-[10px] font-semibold hover:bg-studio-subtle cursor-pointer">☁️ Neutral D65: OFF</button>
-            </div>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2.5">
-            <div>
-              <h2 class="text-xs font-bold text-studio-ink">TMA Light Fixtures by Room</h2>
-              <p class="text-[10px] text-studio-muted">Mapped to exact TMA DCLs &amp; Ch. 3 twin wall sconces</p>
-            </div>
-            <div id="fixture-room-list" class="space-y-2"></div>
-          </div>
-
-          <!-- GPU Photo Render Card -->
-          <div class="bg-studio-ink text-white rounded-2xl p-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <span class="text-[11px] font-bold uppercase tracking-wider text-amber-300">Studio Photo Path Tracer</span>
-              <span id="sidebar-rt-gpu" class="text-[9.5px] font-mono text-white/60">WebGL2 BVH</span>
-            </div>
-            <p class="text-[10.5px] text-white/75 leading-relaxed">
-              Physical Ambilly HDR sky with Alpine skyline, crisp sun shafts, 6–8 interior GI bounces, and sharpness-preserving à-trous denoising.
-            </p>
-            <button id="btn-sidebar-rt" type="button" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold cursor-pointer">
-              Launch Photo Render (RT)
-            </button>
-          </div>
-
-          <!-- Save / Import / Export / Scenarios -->
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <h2 class="text-xs font-bold text-studio-ink">Layout Storage &amp; Scenarios</h2>
-              <button id="btn-save-scenario" type="button" class="px-2 py-1 rounded-lg bg-studio-subtle hover:bg-studio-border text-[10px] font-bold cursor-pointer">💾 Save to Active Slot</button>
-            </div>
-            <p class="text-[10px] text-studio-muted">Auto-saves locally (+ IndexedDB for .GLB files). Use A/B/C in top bar to compare variants.</p>
-            <div class="grid grid-cols-3 gap-1.5">
-              <button id="btn-export-json" type="button" class="py-1.5 rounded-xl border border-studio-border hover:bg-studio-subtle text-[10px] font-semibold cursor-pointer">↓ Export JSON</button>
-              <label class="py-1.5 rounded-xl border border-studio-border hover:bg-studio-subtle text-[10px] font-semibold text-center cursor-pointer">
-                ↑ Import JSON
-                <input id="json-import-input" type="file" accept=".json,application/json" class="hidden" />
-              </label>
-              <button id="btn-reset-layout" type="button" class="py-1.5 rounded-xl border border-red-200 text-red-700 hover:bg-red-50 text-[10px] font-semibold cursor-pointer">↺ Reset All</button>
-            </div>
-          </div>
-        </section>
-
-        <!-- ========== TAB 5: AI PROMPT 3D STUDIO ========== -->
-        <section id="panel-prompt" class="hidden space-y-3">
-          <div class="bg-gradient-to-br from-[#1E1C19] to-[#342E27] text-white rounded-2xl p-3.5 space-y-2.5">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-bold flex items-center gap-1.5">✨ Prompt 3D Studio</span>
-              <span id="ai-mode-badge" class="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30">Phase 2 · Local CAD</span>
-            </div>
-            <p class="text-[10.5px] text-white/80 leading-relaxed">
-              Modelise multi-part 3D furniture, <strong>refine the selected piece</strong> (<em>"make it 30cm wider"</em>, <em>"brass legs"</em>), paint walls, or control Ambilly sun!
-            </p>
-            <div id="prompt-selected-pill" class="hidden text-[10px] bg-amber-400/15 border border-amber-400/35 text-amber-200 rounded-lg px-2 py-1 flex items-center justify-between gap-1">
-              <span>🎯 Selected: <strong id="prompt-selected-name"></strong> (edits apply directly!)</span>
-            </div>
-            <form id="prompt-form" class="space-y-2">
-              <textarea id="prompt-input" rows="2" placeholder="e.g. Arched brass floor mirror in ch3, or 'make it 30cm wider'…"
-                class="w-full rounded-xl bg-white/10 border border-white/20 px-2.5 py-2 text-xs text-white placeholder-white/45 focus:outline-none focus:border-amber-400 resize-none"></textarea>
-              <button id="btn-prompt-submit" type="submit" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold cursor-pointer">
-                ✨ Modelise &amp; Apply
-              </button>
-            </form>
-            <div id="prompt-feedback" class="hidden text-[10.5px] bg-white/10 rounded-xl px-2.5 py-1.5 text-amber-200"></div>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <div class="text-[10px] font-bold uppercase tracking-wider text-studio-muted">Designer 3D Prompts (1-Click)</div>
-            <div id="prompt-examples" class="flex flex-wrap gap-1.5"></div>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <div>
-              <h2 class="text-xs font-bold text-studio-ink">📦 Import .GLB / .GLTF Model</h2>
-              <p class="text-[10px] text-studio-muted">Persisted in IndexedDB across reloads (IKEA, SketchUp, Tripo3D)</p>
-            </div>
-            <label class="block w-full py-2 px-3 rounded-xl border border-dashed border-studio-accent/50 bg-studio-bg hover:bg-studio-subtle text-center text-[11px] font-semibold text-studio-ink cursor-pointer">
-              + Choose .glb / .gltf File
-              <input id="glb-file-input" type="file" accept=".glb,.gltf" class="hidden" />
-            </label>
-          </div>
-
-          <div class="bg-white rounded-2xl border border-studio-border p-3 space-y-2">
-            <div class="flex items-center justify-between">
-              <h2 class="text-xs font-bold text-studio-ink">Your Prompted 3D Library</h2>
-              <span id="custom-lib-count" class="text-[10px] font-mono text-studio-muted">0 saved</span>
-            </div>
-            <div id="custom-lib-list" class="space-y-1.5 text-[11px] text-studio-muted"></div>
-          </div>
-
-          <details class="bg-white rounded-2xl border border-studio-border p-3">
-            <summary class="text-[11px] font-bold text-studio-ink cursor-pointer select-none">
-              ⚙️ Live LLM 3D Engine (Optional Gemini / OpenAI BYOK)
-            </summary>
-            <div class="mt-2.5 space-y-2 text-[10.5px]">
-              <p class="text-studio-muted leading-snug">Connect your own API key (stored only in your browser) to generate arbitrary multi-part 3D CAD schemas from any creative prompt.</p>
-              <select id="ai-provider" class="w-full rounded-lg border border-studio-border bg-studio-bg px-2 py-1.5 text-[11px] font-medium">
-                <option value="local">Built-in Designer Modeliser (Free, Instant)</option>
-                <option value="gemini">Google Gemini API (gemini-2.5-flash)</option>
-                <option value="openai">OpenAI-Compatible API (gpt-4o-mini / custom)</option>
-              </select>
-              <input id="ai-api-key" type="password" placeholder="Paste API key (kept locally in localStorage)"
-                class="w-full rounded-lg border border-studio-border bg-studio-bg px-2 py-1.5 text-[11px]" />
-              <div class="grid grid-cols-2 gap-1.5">
-                <input id="ai-model" type="text" placeholder="gemini-2.5-flash"
-                  class="rounded-lg border border-studio-border bg-studio-bg px-2 py-1.5 text-[11px]" />
-                <button id="btn-ai-save" type="button" class="rounded-lg bg-studio-ink text-white font-semibold text-[11px] cursor-pointer">Save Engine</button>
-              </div>
-            </div>
-          </details>
-        </section>
-
-        <!-- ========== TAB 6: LIVE BUDGET & SHOPPING LIST (BOM) ========== -->
-        <section id="panel-budget" class="hidden space-y-3">
-          <div id="budget-content" class="space-y-3"></div>
-        </section>
-
-      </div>
-    </aside>
   </div>
 
   <script type="module" src="/src/main.js"></script>

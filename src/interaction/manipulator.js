@@ -4,14 +4,16 @@ import {
   detectRoomAt,
   getRotatedHalfExtents
 } from '../core/floorplan.js';
+import { TOOL_MODES, resolvePointerAction } from '../core/toolModes.js';
 import { clearGroupAndDispose } from '../core/dispose.js';
 
 /* =========================================================================
- * UPGRADED DIRECT 3D FURNITURE MANIPULATOR
- * - Zero-allocation floor selection ring + draggable circular rotation handle
- * - Magnetic wall snapping (hold Alt to bypass) + room & kitchen collision clamp
- * - On-canvas 3D floor dimension arrows + live cm sprite labels (N/S/E/W)
- * - Point-and-edit raycasting on walls & kitchen cabinets!
+ * MODE-AWARE DIRECT 3D FURNITURE MANIPULATOR & PAINT BRUSH PICKER
+ * - Navigate mode (Default): Left-drag ALWAYS orbits! Short click inspects.
+ * - Arrange mode: Left-drag moves furniture (+ wall snap, 3D cm arrows,
+ *   drag-to-rotate knob); right-drag or empty left-drag orbits!
+ * - Paint mode: Hover highlights walls; click brushes active Dulux swatch!
+ * - Measure / Studio modes: Completely passive (never interferes).
  * ========================================================================= */
 
 function createDimBadgeSprite(text) {
@@ -19,11 +21,11 @@ function createDimBadgeSprite(text) {
   c.width = 128;
   c.height = 44;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = 'rgba(24, 22, 19, 0.88)';
+  ctx.fillStyle = 'rgba(24, 22, 19, 0.90)';
   ctx.beginPath();
   ctx.roundRect(4, 4, 120, 36, 10);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(245, 158, 11, 0.75)';
+  ctx.strokeStyle = 'rgba(245, 158, 11, 0.80)';
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.fillStyle = '#FDE68A';
@@ -46,29 +48,33 @@ export class FurnitureManipulator {
     domElement,
     getCamera,
     getControls,
+    getToolMode,
     scene,
     movableGroup,
     getItems,
     onSelect,
+    onSelectContext,
+    onPaintWall,
+    onHoverWall,
     onTransformLive,
     onTransformEnd,
     onLiveClearance,
-    onClickWall,
-    onClickKitchen,
     isBlocked
   }) {
     this.dom = domElement;
     this.getCamera = getCamera;
     this.getControls = getControls;
+    this.getToolMode = getToolMode || (() => 'navigate');
     this.scene = scene;
     this.movableGroup = movableGroup;
     this.getItems = getItems;
     this.onSelect = onSelect;
+    this.onSelectContext = onSelectContext;
+    this.onPaintWall = onPaintWall;
+    this.onHoverWall = onHoverWall;
     this.onTransformLive = onTransformLive;
     this.onTransformEnd = onTransformEnd;
     this.onLiveClearance = onLiveClearance;
-    this.onClickWall = onClickWall;
-    this.onClickKitchen = onClickKitchen;
     this.isBlocked = isBlocked || (() => false);
 
     this.selectedUid = null;
@@ -83,20 +89,26 @@ export class FurnitureManipulator {
     this._dragOffset = new THREE.Vector3();
 
     this._pointerDownPos = { x: 0, y: 0 };
+    this._pointerDownBtn = 0;
     this._isDragging = false;
     this._isRotating = false;
     this._dragMoved = false;
     this._dragMesh = null;
     this._dragItem = null;
 
-    // Reusable zero-allocation selection ring + rotation handle!
+    // Wall hover highlight state for Paint mode
+    this._hoveredWallMat = null;
+    this._hoveredWallOrigEmissive = new THREE.Color(0x000000);
+    this._hoveredWallOrigIntensity = 0;
+
+    // Reusable zero-allocation floor selection ring + drag-to-rotate knob
     this._selectionRing = new THREE.Group();
     this._selectionRing.visible = false;
     this._selectionRing.userData.hideInRT = true;
     this._initReusableRing();
     this.scene.add(this._selectionRing);
 
-    // On-canvas 3D floor dimension arrows + cm sprites
+    // On-canvas 3D floor dimension arrows + cm badges
     this._dimOverlay = new THREE.Group();
     this._dimOverlay.visible = false;
     this._dimOverlay.userData.hideInRT = true;
@@ -107,7 +119,6 @@ export class FurnitureManipulator {
   }
 
   _initReusableRing() {
-    // Unit 1x1 border line scaled in place -> ZERO allocations per drag frame!
     const pts = [
       new THREE.Vector3(-0.5, 0.025, -0.5),
       new THREE.Vector3( 0.5, 0.025, -0.5),
@@ -126,14 +137,12 @@ export class FurnitureManipulator {
     this._ringFill.rotation.x = -Math.PI / 2;
     this._ringFill.position.y = 0.02;
 
-    // Front orientation chevron (+Z local)
     this._ringArrow = new THREE.Mesh(
       new THREE.ConeGeometry(0.06, 0.14, 3),
       new THREE.MeshBasicMaterial({ color: '#D97706' })
     );
     this._ringArrow.rotation.x = Math.PI / 2;
 
-    // Interactive Circular Rotate Handle (drag to rotate smoothly!)
     this._rotateHandle = new THREE.Mesh(
       new THREE.CylinderGeometry(0.09, 0.09, 0.025, 20),
       new THREE.MeshBasicMaterial({ color: '#F59E0B' })
@@ -165,11 +174,10 @@ export class FurnitureManipulator {
   }
 
   _pickRotateHandle(e) {
-    if (!this._selectionRing.visible || !this.selectedUid) return false;
+    if (!this._selectionRing.visible || !this._rotateHandle.visible || !this.selectedUid) return false;
     this._updateNdc(e);
     this._raycaster.setFromCamera(this._ndc, this.getCamera());
-    const hits = this._raycaster.intersectObject(this._rotateHandle, true);
-    return hits.length > 0;
+    return this._raycaster.intersectObject(this._rotateHandle, true).length > 0;
   }
 
   _pickMovable(e) {
@@ -188,10 +196,15 @@ export class FurnitureManipulator {
     this._raycaster.setFromCamera(this._ndc, this.getCamera());
     const hits = this._raycaster.intersectObjects(this.scene.children, true);
     for (const h of hits) {
-      if (!h.object.visible) continue;
-      if (h.object.userData?.clickableKitchen) return { kind: 'kitchen' };
+      if (!h.object.visible || h.object.userData?.hideInRT) continue;
+      if (h.object.userData?.clickableKitchen) return { kind: 'kitchen', mesh: h.object };
       if (h.object.userData?.clickableWall && h.object.userData?.paintRoom) {
-        return { kind: 'wall', roomId: h.object.userData.paintRoom, isAccent: h.object.userData.isAccent };
+        return {
+          kind: 'wall',
+          roomId: h.object.userData.paintRoom,
+          isAccent: Boolean(h.object.userData.isAccent),
+          mesh: h.object
+        };
       }
       if (this._findMovableRoot(h.object)) return null;
     }
@@ -204,62 +217,112 @@ export class FurnitureManipulator {
     return this._raycaster.ray.intersectPlane(this._floorPlane, this._hitPoint);
   }
 
+  clearWallHover() {
+    if (this._hoveredWallMat) {
+      this._hoveredWallMat.emissive.copy(this._hoveredWallOrigEmissive);
+      this._hoveredWallMat.emissiveIntensity = this._hoveredWallOrigIntensity;
+      this._hoveredWallMat = null;
+      this.onHoverWall?.(null);
+      this.onTransformLive?.();
+    }
+  }
+
+  _setWallHover(mesh, roomId) {
+    const mat = mesh?.material || null;
+    if (mat === this._hoveredWallMat) return;
+    this.clearWallHover();
+    if (mat && mat.emissive) {
+      this._hoveredWallMat = mat;
+      this._hoveredWallOrigEmissive.copy(mat.emissive);
+      this._hoveredWallOrigIntensity = mat.emissiveIntensity ?? 0;
+      mat.emissive.set('#F59E0B');
+      mat.emissiveIntensity = 0.14;
+      this.onHoverWall?.(roomId);
+      this.onTransformLive?.();
+    }
+  }
+
+  syncToolMode(mode) {
+    if (mode !== 'paint') this.clearWallHover();
+    const def = TOOL_MODES[mode] || TOOL_MODES.navigate;
+    this.dom.style.cursor = def.cursor;
+    // Show the orange drag-to-rotate knob & 3D cm arrows prominently in Arrange mode
+    this._rotateHandle.visible = (mode === 'arrange');
+    if (mode === 'studio' || mode === 'measure' || mode === 'paint') {
+      this._selectionRing.visible = false;
+      this._dimOverlay.visible = false;
+    } else if (this.selectedUid) {
+      this.updateSelectionVisual();
+    }
+  }
+
   _bindEvents() {
     this.dom.addEventListener('pointerdown', (e) => {
       if (this.isBlocked()) return;
-      if (e.button !== 0 && e.pointerType === 'mouse') return;
       this._pointerDownPos = { x: e.clientX, y: e.clientY };
+      this._pointerDownBtn = e.pointerType === 'mouse' ? e.button : 0;
       this._dragMoved = false;
 
-      // 1. Check drag-to-rotate handle first!
-      if (this._pickRotateHandle(e)) {
-        const mesh = this.movableGroup.children.find(m => m.userData.uid === this.selectedUid);
-        const item = this.getItems().find(it => it.uid === this.selectedUid);
-        if (mesh && item) {
-          this._isRotating = true;
-          this._dragMesh = mesh;
-          this._dragItem = item;
-          this.getControls().enabled = false;
-          this.dom.style.cursor = 'alias';
-          this.dom.setPointerCapture?.(e.pointerId);
-          return;
+      const mode = this.getToolMode();
+      if (this._pointerDownBtn !== 0) return; // Right/middle drag ALWAYS orbits!
+
+      // Check Rotate Handle first (only active in Arrange mode)
+      if (mode === 'arrange' && this._pickRotateHandle(e)) {
+        const action = resolvePointerAction({ mode, phase: 'pointerdown', button: 0, hitKind: 'rotateHandle' });
+        if (action === 'rotate-furniture') {
+          const mesh = this.movableGroup.children.find(m => m.userData.uid === this.selectedUid);
+          const item = this.getItems().find(it => it.uid === this.selectedUid);
+          if (mesh && item) {
+            this._isRotating = true;
+            this._dragMesh = mesh;
+            this._dragItem = item;
+            this.getControls().enabled = false;
+            this.dom.style.cursor = 'alias';
+            this.dom.setPointerCapture?.(e.pointerId);
+            return;
+          }
         }
       }
 
-      // 2. Check movable furniture pick
-      const hitRoot = this._pickMovable(e);
-      if (hitRoot) {
-        const uid = hitRoot.userData.uid;
-        if (this.selectedUid !== uid) {
-          this.select(uid);
-        }
-        if (this._intersectFloor(e)) {
-          this._isDragging = true;
-          this._dragMesh = hitRoot;
-          this._dragItem = this.getItems().find(it => it.uid === uid) || null;
-          this._dragOffset.set(
-            hitRoot.position.x - this._hitPoint.x,
-            0,
-            hitRoot.position.z - this._hitPoint.z
-          );
-          this.getControls().enabled = false;
-          this.dom.style.cursor = 'grabbing';
-          this.dom.setPointerCapture?.(e.pointerId);
+      // Check Furniture Drag (ONLY triggers in Arrange mode — NEVER in Navigate!)
+      if (mode === 'arrange') {
+        const hitRoot = this._pickMovable(e);
+        const action = resolvePointerAction({
+          mode,
+          phase: 'pointerdown',
+          button: 0,
+          hitKind: hitRoot ? 'movable' : 'none'
+        });
+        if (action === 'drag-furniture' && hitRoot) {
+          const uid = hitRoot.userData.uid;
+          if (this.selectedUid !== uid) this.select(uid);
+          if (this._intersectFloor(e)) {
+            this._isDragging = true;
+            this._dragMesh = hitRoot;
+            this._dragItem = this.getItems().find(it => it.uid === uid) || null;
+            this._dragOffset.set(
+              hitRoot.position.x - this._hitPoint.x,
+              0,
+              hitRoot.position.z - this._hitPoint.z
+            );
+            this.getControls().enabled = false;
+            this.dom.style.cursor = 'grabbing';
+            this.dom.setPointerCapture?.(e.pointerId);
+          }
         }
       }
     });
 
     this.dom.addEventListener('pointermove', (e) => {
       if (this.isBlocked()) return;
+      const mode = this.getToolMode();
 
-      // Live circular drag-to-rotate!
       if (this._isRotating && this._dragMesh && this._dragItem) {
         if (this._intersectFloor(e)) {
           this._dragMoved = true;
           const dx = this._hitPoint.x - this._dragMesh.position.x;
           const dz = this._hitPoint.z - this._dragMesh.position.z;
           let angle = Math.atan2(dx, dz);
-          // Snap to 15° increments unless Alt is held
           if (!e.altKey) {
             const step = Math.PI / 12;
             angle = Math.round(angle / step) * step;
@@ -275,7 +338,6 @@ export class FurnitureManipulator {
         return;
       }
 
-      // Live floor drag with magnetic wall snap & collision clamping!
       if (this._isDragging && this._dragMesh && this._dragItem) {
         const dx = e.clientX - this._pointerDownPos.x;
         const dy = e.clientY - this._pointerDownPos.y;
@@ -313,17 +375,31 @@ export class FurnitureManipulator {
         return;
       }
 
-      if (e.pointerType === 'mouse') {
-        if (this._pickRotateHandle(e)) {
-          this.dom.style.cursor = 'alias';
+      if (e.pointerType !== 'mouse') return;
+
+      // Mode-specific hover cues
+      if (mode === 'paint') {
+        const hit = this._pickStaticContext(e);
+        if (hit?.kind === 'wall') {
+          this._setWallHover(hit.mesh, hit.roomId);
+          this.dom.style.cursor = 'cell';
         } else {
-          const hovered = this._pickMovable(e);
-          this.dom.style.cursor = hovered ? 'pointer' : 'grab';
+          this.clearWallHover();
+          this.dom.style.cursor = 'grab';
         }
+      } else if (mode === 'arrange') {
+        if (this._pickRotateHandle(e)) this.dom.style.cursor = 'alias';
+        else if (this._pickMovable(e)) this.dom.style.cursor = 'move';
+        else this.dom.style.cursor = 'grab';
+      } else {
+        const def = TOOL_MODES[mode] || TOOL_MODES.navigate;
+        this.dom.style.cursor = def.cursor;
       }
     });
 
     const finishDrag = (e) => {
+      const mode = this.getToolMode();
+
       if (this._isDragging || this._isRotating) {
         const moved = this._dragMoved;
         const item = this._dragItem;
@@ -332,22 +408,50 @@ export class FurnitureManipulator {
         this._dragMesh = null;
         this._dragItem = null;
         this.getControls().enabled = true;
-        this.dom.style.cursor = 'grab';
+        this.dom.style.cursor = (TOOL_MODES[mode] || TOOL_MODES.navigate).cursor;
         try { this.dom.releasePointerCapture?.(e.pointerId); } catch (_) {}
         if (moved && item) {
           this.onTransformEnd?.(item);
         }
-      } else if (!this.isBlocked()) {
-        const dist = Math.hypot(e.clientX - this._pointerDownPos.x, e.clientY - this._pointerDownPos.y);
-        if (dist < 5 && !this._pickMovable(e)) {
-          if (this.selectedUid) {
-            this.select(null);
-          } else {
-            // Point-and-edit: clicking a wall or kitchen cabinet directly opens its panel!
-            const ctx = this._pickStaticContext(e);
-            if (ctx?.kind === 'kitchen') this.onClickKitchen?.();
-            else if (ctx?.kind === 'wall') this.onClickWall?.(ctx.roomId, ctx.isAccent);
-          }
+        return;
+      }
+
+      if (this.isBlocked()) return;
+      if (this._pointerDownBtn !== 0) return;
+
+      // Only treat as a click if pointer barely moved (< 5px -> NOT an orbit drag!)
+      const dist = Math.hypot(e.clientX - this._pointerDownPos.x, e.clientY - this._pointerDownPos.y);
+      if (dist >= 5) return;
+
+      // Resolve click action cleanly via the Tool Mode state machine!
+      if (mode === 'paint') {
+        const hit = this._pickStaticContext(e);
+        const action = resolvePointerAction({ mode, phase: 'click', button: 0, hitKind: hit?.kind || 'none' });
+        if (action === 'paint-wall' && hit?.kind === 'wall') {
+          this.clearWallHover();
+          this.onPaintWall?.(hit.roomId, hit.isAccent);
+        }
+        return;
+      }
+
+      if (mode === 'navigate' || mode === 'arrange') {
+        const hitMov = this._pickMovable(e);
+        if (hitMov) {
+          const action = resolvePointerAction({ mode, phase: 'click', button: 0, hitKind: 'movable' });
+          if (action === 'select-movable') this.select(hitMov.userData.uid);
+          return;
+        }
+        const ctx = this._pickStaticContext(e);
+        const action = resolvePointerAction({ mode, phase: 'click', button: 0, hitKind: ctx?.kind || 'none' });
+        if (action === 'select-kitchen') {
+          this.select(null, { silent: true });
+          this.onSelectContext?.({ kind: 'kitchen' });
+        } else if (action === 'select-wall' && ctx?.roomId) {
+          this.select(null, { silent: true });
+          this.onSelectContext?.({ kind: 'wall', roomId: ctx.roomId, isAccent: ctx.isAccent });
+        } else if (action === 'deselect') {
+          this.select(null);
+          this.onSelectContext?.(null);
         }
       }
     };
@@ -382,7 +486,7 @@ export class FurnitureManipulator {
   }
 
   _updateDimensionArrows(item, mesh, cl) {
-    if (!item || !mesh || !cl || !cl.roomBounds) {
+    if (!item || !mesh || !cl || !cl.roomBounds || this.getToolMode() === 'studio') {
       this._dimOverlay.visible = false;
       return;
     }
@@ -407,7 +511,6 @@ export class FurnitureManipulator {
       this._dimOverlay.add(badge);
     };
 
-    // Draw N / S / W / E visual floor clearance arrows
     addRay(item.x, item.z - cl.halfZ, item.x, b.minZ, cl.northCm);
     addRay(item.x, item.z + cl.halfZ, item.x, b.maxZ, cl.southCm);
     addRay(item.x - cl.halfX, item.z, b.minX, item.z, cl.westCm);
@@ -416,23 +519,26 @@ export class FurnitureManipulator {
     this._dimOverlay.visible = true;
   }
 
-  select(uid) {
+  select(uid, { silent = false } = {}) {
     this.selectedUid = uid;
     this.updateSelectionVisual();
     const item = uid ? this.getItems().find(i => i.uid === uid) : null;
     const mesh = uid ? this.movableGroup.children.find(m => m.userData.uid === uid) : null;
     const cl = item && mesh ? this.computeClearance(item, mesh) : null;
-    if (cl) {
+    if (cl && this.getToolMode() === 'arrange') {
       this._updateDimensionArrows(item, mesh, cl);
     } else {
       this._dimOverlay.visible = false;
       this._lastDimSig = '';
     }
-    this.onSelect?.(item || null, cl);
+    if (!silent) {
+      this.onSelect?.(item || null, cl);
+    }
   }
 
   updateSelectionVisual() {
-    if (!this.selectedUid) {
+    const mode = this.getToolMode();
+    if (!this.selectedUid || mode === 'studio' || mode === 'paint' || mode === 'measure') {
       this._selectionRing.visible = false;
       this._dimOverlay.visible = false;
       return;
@@ -448,11 +554,11 @@ export class FurnitureManipulator {
     const rw = fp.w + pad * 2;
     const rd = fp.d + pad * 2;
 
-    // Update scale/positions in place — ZERO geometry/material allocations!
     this._ringBorder.scale.set(rw, 1, rd);
     this._ringFill.scale.set(rw, rd, 1);
     this._ringArrow.position.set(0, 0.03, rd / 2 + 0.09);
     this._rotateHandle.position.set(0, 0.03, rd / 2 + 0.28);
+    this._rotateHandle.visible = (mode === 'arrange');
 
     this._selectionRing.position.set(mesh.position.x, 0, mesh.position.z);
     this._selectionRing.rotation.y = mesh.rotation.y;

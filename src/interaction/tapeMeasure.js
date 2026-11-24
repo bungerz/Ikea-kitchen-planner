@@ -99,9 +99,19 @@ export class TapeMeasureTool {
   }
 
   _bindEvents() {
+    let downPos = { x: 0, y: 0 };
+    let downBtn = 0;
+
     this.dom.addEventListener('pointerdown', (e) => {
       if (!this.active) return;
-      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      downPos = { x: e.clientX, y: e.clientY };
+      downBtn = e.pointerType === 'mouse' ? e.button : 0;
+    });
+
+    this.dom.addEventListener('pointerup', (e) => {
+      if (!this.active || downBtn !== 0) return;
+      if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) >= 5) return;
+
       const pt = this._pickSurfacePoint(e);
       if (!pt) return;
 

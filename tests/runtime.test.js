@@ -38,6 +38,11 @@ function installMockBrowser() {
   });
 
   globalThis.document = {
+    documentElement: {
+      _attrs: {},
+      setAttribute(k, v) { this._attrs[k] = v; },
+      getAttribute(k) { return this._attrs[k]; }
+    },
     createElement(tag) {
       const el = makeEl();
       el.tagName = tag.toUpperCase();
@@ -132,14 +137,34 @@ test('every 3D builder, kitchen variant, furniture model, overlay, and raytracer
   ov.updateTmaOverlay(true, diag.occludedOutlets);
 });
 
-test('all UI panel renderers & interaction controllers instantiate cleanly and match index.html IDs', async () => {
+test('all Spatial Studio UI panels, contextual inspector variants, themes & interaction controllers instantiate cleanly and match DOM IDs', async () => {
   const { renderAllPanels } = await import('../src/ui/panels.js');
+  const { renderContextualInspector } = await import('../src/ui/inspector.js');
   const { createDefaultState } = await import('../src/core/state.js');
+  const { TOOL_MODE_ORDER } = await import('../src/core/toolModes.js');
   const { FurnitureManipulator } = await import('../src/interaction/manipulator.js');
   const { TapeMeasureTool } = await import('../src/interaction/tapeMeasure.js');
 
   const st = createDefaultState();
-  renderAllPanels(st, { collisions: [], warnings: [], occludedOutlets: [] });
+  for (const theme of ['light', 'dark']) {
+    st.theme = theme;
+    for (const mode of TOOL_MODE_ORDER) {
+      st.toolMode = mode;
+      renderAllPanels(st, { collisions: [], warnings: [], occludedOutlets: [] }, { hoveredWallRoom: 'ch3', rtActive: false, measureCount: 2 });
+    }
+    assert.equal(globalThis.document.documentElement.getAttribute('data-theme'), theme);
+  }
+
+  // Smoke-test Contextual Inspector for every selection type
+  st.toolMode = 'navigate';
+  renderContextualInspector(st, null);
+  renderContextualInspector(st, { kind: 'wall', roomId: 'ch3', isAccent: true });
+  renderContextualInspector(st, { kind: 'kitchen' });
+  for (const item of st.items) {
+    renderContextualInspector(st, { kind: 'movable', uid: item.uid }, { roomName: 'Séjour', wCm: 160, dCm: 90, northCm: 40, southCm: 80, westCm: 50, eastCm: 60 });
+  }
+  const inspBody = globalThis.document.getElementById('insp-body');
+  assert.ok(inspBody.innerHTML.includes('insp-move-btn'), 'Movable inspector must include 1-click Move in 3D button');
 
   const dom = globalThis.document.createElement('canvas');
   const cam = new THREE.PerspectiveCamera();
@@ -151,10 +176,12 @@ test('all UI panel renderers & interaction controllers instantiate cleanly and m
     domElement: dom,
     getCamera: () => cam,
     getControls: () => fakeControls,
+    getToolMode: () => st.toolMode,
     scene,
     movableGroup: mg,
     getItems: () => st.items
   });
+  for (const mode of TOOL_MODE_ORDER) manip.syncToolMode(mode);
   manip.select(null);
 
   const tm = new TapeMeasureTool({ domElement: dom, getCamera: () => cam, scene });
@@ -162,13 +189,18 @@ test('all UI panel renderers & interaction controllers instantiate cleanly and m
   tm.clearAll();
   tm.setActive(false);
 
-  // Verify every static getElementById in main.js & panels.js exists in index.html
-  const html = fs.readFileSync('index.html', 'utf8');
-  const htmlIds = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
-  for (const f of ['src/main.js', 'src/ui/panels.js']) {
+  // Verify every getElementById in main.js, panels.js, inspector.js & budgetPanel.js exists in index.html or dynamic UI templates
+  const templateSources = [
+    fs.readFileSync('index.html', 'utf8'),
+    fs.readFileSync('src/ui/panels.js', 'utf8'),
+    fs.readFileSync('src/ui/inspector.js', 'utf8'),
+    fs.readFileSync('src/ui/budgetPanel.js', 'utf8')
+  ].join('\n');
+  const knownIds = new Set([...templateSources.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
+  for (const f of ['src/main.js', 'src/ui/panels.js', 'src/ui/inspector.js', 'src/ui/budgetPanel.js']) {
     const code = fs.readFileSync(f, 'utf8');
     for (const m of code.matchAll(/getElementById\(['"]([^'"]+)['"]\)/g)) {
-      assert.ok(htmlIds.has(m[1]), `Missing DOM id="${m[1]}" in index.html (referenced in ${f})`);
+      assert.ok(knownIds.has(m[1]), `Missing DOM id="${m[1]}" in index.html/templates (referenced in ${f})`);
     }
   }
 });

@@ -158,6 +158,26 @@ export class CameraModeController {
     this.onCameraMove?.();
   }
 
+  /**
+   * Adapts OrbitControls mouse buttons to the active Studio Tool Mode so
+   * right-drag always orbits effortlessly while in Arrange / Paint / Measure!
+   */
+  setToolMode(toolMode) {
+    if (toolMode === 'arrange' || toolMode === 'paint' || toolMode === 'measure') {
+      this.controls.mouseButtons = {
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.PAN,
+        RIGHT: THREE.MOUSE.ROTATE
+      };
+    } else {
+      this.controls.mouseButtons = {
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+      };
+    }
+  }
+
   setAutoHideWalls(enabled) {
     this.autoHideWalls = Boolean(enabled);
     if (!this.autoHideWalls) this._restoreExteriorWalls();

@@ -34,6 +34,7 @@ import { buildCassiopeeEnvironment } from './environment/cassiopeeBuilding.js';
 import { DynamicSkyIBL } from './core/ibl.js';
 import { RealtimePostPipeline } from './core/postprocessing.js';
 import { clearGroupAndDispose, disposeObject3D } from './core/dispose.js';
+import { TOOL_MODES } from './core/toolModes.js';
 import {
   STORAGE_KEY,
   createDefaultState,
@@ -47,10 +48,12 @@ import {
 } from './core/state.js';
 import {
   renderAllPanels,
-  renderRoomNav,
-  renderTabs,
+  renderTheme,
+  renderTopBar,
   renderCameraModeButtons,
   renderScenarioButtons,
+  renderLeftRailAndDrawer,
+  renderModeDockAndSubbar,
   renderTableSection,
   renderBedSection,
   renderSofaSection,
@@ -62,9 +65,10 @@ import {
   getAddTargetRoom
 } from './ui/panels.js';
 import { renderBudgetPanel } from './ui/budgetPanel.js';
+import { renderContextualInspector } from './ui/inspector.js';
 
 /* =========================================================================
- * 1. STATE, UNDO & ON-DEMAND RENDERING ENGINE
+ * 1. STATE, SELECTION, UNDO & ON-DEMAND RENDERING ENGINE
  * ========================================================================= */
 let state = loadSavedState();
 const undoMgr = createUndoManager(40);
@@ -76,6 +80,11 @@ let movableGroup, fixturesGroup;
 let sunLight, hemiLight, fillLight;
 let dynamicFixtureLights = [];
 let lastDiagnostics = null;
+
+// Unified Contextual Selection: null | { kind: 'movable', uid } | { kind: 'kitchen' } | { kind: 'wall', roomId, isAccent }
+let currentSelection = null;
+let currentClearance = null;
+let hoveredWallRoom = null;
 
 let sunPlaying = false;
 let lastSunAnimTs = 0;
@@ -90,6 +99,90 @@ let rtLastHudTs = 0;
 
 function requestRender() {
   needsRender = true;
+}
+
+function getMeasureCount() {
+  return Math.floor((tapeMeasure?._linesGroup?.children?.length || 0) / 4);
+}
+
+function getDockExtra() {
+  return {
+    hoveredWallRoom,
+    rtActive,
+    measureCount: getMeasureCount()
+  };
+}
+
+function refreshInspector() {
+  if (currentSelection?.kind === 'movable') {
+    const item = state.items.find(i => i.uid === currentSelection.uid);
+    const mesh = movableGroup?.children.find(m => m.userData.uid === currentSelection.uid);
+    currentClearance = item && mesh && manipulator ? manipulator.computeClearance(item, mesh) : null;
+  }
+  renderContextualInspector(state, currentSelection, currentClearance);
+}
+
+function updateInspectorClearanceText(clearance) {
+  currentClearance = clearance;
+  const subEl = document.getElementById('insp-subtitle');
+  if (!subEl || !clearance) return;
+  if (clearance.northCm !== undefined) {
+    const snapTag = clearance.snappedWall ? ` · 🧲 ${clearance.snappedWall}` : '';
+    subEl.textContent = `${clearance.roomName} · ${clearance.wCm}×${clearance.dCm} cm · N:${clearance.northCm} S:${clearance.southCm} W:${clearance.westCm} E:${clearance.eastCm}${snapTag}`;
+  } else {
+    subEl.textContent = `${clearance.wCm} × ${clearance.dCm} cm`;
+  }
+}
+
+function setSelection(sel, clearance = null) {
+  currentSelection = sel;
+  currentClearance = clearance;
+  renderContextualInspector(state, currentSelection, currentClearance);
+}
+
+function setToolMode(mode, { silent = false } = {}) {
+  if (!TOOL_MODES[mode]) return;
+  state.toolMode = mode;
+
+  if (camModes) camModes.setToolMode(mode);
+  if (manipulator) manipulator.syncToolMode(mode);
+  if (tapeMeasure) {
+    tapeMeasure.setActive(mode === 'measure');
+  }
+
+  // In Studio mode, hide editing drawers/selection cleanly so the scene shines
+  if (mode === 'studio') {
+    if (manipulator?.selectedUid) manipulator.select(null, { silent: true });
+    currentSelection = null;
+  } else if (mode === 'paint') {
+    if (manipulator?.selectedUid) manipulator.select(null, { silent: true });
+    currentSelection = null;
+  } else if (mode === 'measure') {
+    if (manipulator?.selectedUid) manipulator.select(null, { silent: true });
+    currentSelection = null;
+  }
+
+  renderTopBar(state);
+  renderLeftRailAndDrawer(state);
+  renderModeDockAndSubbar(state, getDockExtra());
+  refreshInspector();
+  requestRender();
+
+  if (!silent) {
+    const def = TOOL_MODES[mode];
+    showToast(`${def.icon} ${def.label} — ${def.hint}`);
+  }
+}
+
+function openDrawer(drawerId) {
+  state.openDrawer = state.openDrawer === drawerId ? null : drawerId;
+  if (state.openDrawer && state.toolMode === 'studio') {
+    setToolMode('navigate', { silent: true });
+  }
+  renderLeftRailAndDrawer(state);
+  if (state.openDrawer === 'budget') {
+    renderBudgetPanel(state, lastDiagnostics);
+  }
 }
 
 function getFootprintForItem(item) {
@@ -115,7 +208,8 @@ function refreshOverlaysAndDiagnostics() {
   if (!overlays) return;
   lastDiagnostics = overlays.updateDoorSwings(state.showDoorSwings, state.items, getFootprintForItem);
   overlays.updateTmaOverlay(state.showTmaOverlay, lastDiagnostics.occludedOutlets);
-  if (state.activeTab === 'budget') {
+  renderTopBar(state);
+  if (state.openDrawer === 'budget') {
     renderBudgetPanel(state, lastDiagnostics);
   }
   requestRender();
@@ -161,7 +255,7 @@ function initThree() {
     if (rtActive && rayTracer) rayTracer.notifyCameraChanged();
   });
 
-  // Base Architectural Lighting with tightened apartment-fitted shadow frustum & normalBias
+  // Base Architectural Lighting with apartment-fitted shadow frustum & normalBias
   hemiLight = new THREE.HemisphereLight(0xFFFDF8, 0xCCC5BA, 0.68);
   scene.add(hemiLight);
 
@@ -200,7 +294,7 @@ function initThree() {
 
   overlays = new ArchitecturalOverlays(scene);
 
-  // Post-processing (N8AO Contact AO + subtle emissive Bloom + AgX OutputPass)
+  // Post-processing (N8AO Contact AO + subtle emissive Bloom + SMAA + AgX OutputPass)
   postPipeline = new RealtimePostPipeline(renderer, scene, camera);
   postPipeline.setQuality(state.postFxQuality || 'high');
 
@@ -226,39 +320,83 @@ function initThree() {
         setCeilingsVisible(true);
       }
       renderCameraModeButtons(state);
-      renderRoomNav(state);
+      renderTopBar(state);
       requestRender();
     }
   });
+  camModes.setToolMode(state.toolMode);
 
-  // 3D Tape Measure Tool (M)
+  // 3D Tape Measure Tool (Mode 4 / M)
   tapeMeasure = new TapeMeasureTool({
     domElement: renderer.domElement,
     getCamera: () => camModes.activeCamera,
     scene,
     onChange: (msg) => {
+      renderModeDockAndSubbar(state, getDockExtra());
       requestRender();
       if (msg) showToast(msg);
     }
   });
 
-  // Upgraded Direct 3D Furniture Manipulator (Wall-snap, Collision, 3D Arrows, Point-and-Edit!)
+  // Mode-Aware Direct 3D Furniture Manipulator & Paint Brush Picker
   manipulator = new FurnitureManipulator({
     domElement: renderer.domElement,
     getCamera: () => camModes.activeCamera,
     getControls: () => camModes.activeControls,
+    getToolMode: () => state.toolMode,
     scene,
     movableGroup,
     getItems: () => state.items,
-    isBlocked: () => tapeMeasure.active || camModes.mode === 'walk',
+    isBlocked: () => camModes.mode === 'walk',
     onSelect: (item, clearance) => {
-      updateSelectionHUD(item, clearance);
-      requestRender();
-      // Contextual auto-focus in sidebar when clicking hero furniture
-      if (item && state.activeTab !== 'prompt') {
+      if (item) {
         if (item.kind === 'bed' && ['ch3', 'ch1', 'ch2'].includes(item.room)) {
           state.activeBedRoom = item.room;
           renderBedSection(state);
+        }
+        setSelection({ kind: 'movable', uid: item.uid }, clearance);
+      } else if (currentSelection?.kind === 'movable') {
+        setSelection(null);
+      }
+      requestRender();
+    },
+    onSelectContext: (ctx) => {
+      if (!ctx) {
+        setSelection(null);
+        return;
+      }
+      if (ctx.kind === 'wall' && state.roomPaints[ctx.roomId]) {
+        state.activePaintRoom = ctx.roomId;
+        renderPaintPanel(state);
+        setSelection(ctx);
+      } else if (ctx.kind === 'kitchen') {
+        setSelection({ kind: 'kitchen' });
+      }
+      requestRender();
+    },
+    onPaintWall: (roomId) => {
+      if (!state.roomPaints[roomId]) return;
+      state.activePaintRoom = roomId;
+      state.roomPaints[roomId] = {
+        paintId: state.activeBrushPaintId,
+        coverage: state.activeBrushCoverage
+      };
+      applyAllRoomPaints();
+      renderPaintPanel(state);
+      renderTopBar(state);
+      if (state.openDrawer === 'budget') renderBudgetPanel(state, lastDiagnostics);
+      undoMgr.snapshot(state);
+      saveState(state);
+      notifyRayTracerMaterialChange();
+      const pDef = DULUX_PAINTS.find(p => p.id === state.activeBrushPaintId);
+      const rm = ROOMS.find(r => r.id === roomId);
+      showToast(`🎨 Painted ${rm?.shortName || roomId} → ${pDef?.shortName || state.activeBrushPaintId}`);
+    },
+    onHoverWall: (roomId) => {
+      if (hoveredWallRoom !== roomId) {
+        hoveredWallRoom = roomId;
+        if (state.toolMode === 'paint') {
+          renderModeDockAndSubbar(state, getDockExtra());
         }
       }
     },
@@ -272,25 +410,10 @@ function initThree() {
       notifyRayTracerGeometryChange();
     },
     onLiveClearance: (clearance) => {
-      const item = state.items.find(i => i.uid === manipulator.selectedUid);
-      updateSelectionHUD(item, clearance);
-    },
-    onClickWall: (roomId) => {
-      if (state.roomPaints[roomId]) {
-        state.activeTab = 'paint';
-        state.activePaintRoom = roomId;
-        renderTabs(state);
-        renderPaintPanel(state);
-        showToast(`Selected ${roomId.toUpperCase()} walls to paint`);
-      }
-    },
-    onClickKitchen: () => {
-      state.activeTab = 'kitchen';
-      renderTabs(state);
-      renderKitchenPanel(state);
-      showToast('IKEA METOD Kitchen selected');
+      updateInspectorClearanceText(clearance);
     }
   });
+  manipulator.syncToolMode(state.toolMode);
 
   rebuildAllMovables();
   applyAllRoomPaints();
@@ -338,7 +461,8 @@ function rebuildSingleMovable(uid) {
     movableGroup.add(mesh);
     if (manipulator && manipulator.selectedUid === uid) {
       manipulator.updateSelectionVisual();
-      updateSelectionHUD(item, manipulator.computeClearance(item, mesh));
+      currentClearance = manipulator.computeClearance(item, mesh);
+      renderContextualInspector(state, currentSelection, currentClearance);
     }
   }
   refreshOverlaysAndDiagnostics();
@@ -444,14 +568,12 @@ function applyAmbillySun() {
 
   const timeStr = formatHour(state.sunHour);
   const dirLbl = compassLabel(sunData.azimuthDeg);
-  const hudLine = document.getElementById('sun-hud-line');
-  if (hudLine) {
-    hudLine.textContent = state.d65Override
-      ? 'Neutral D65 Color Calibration'
-      : `${sunData.isNight ? '🌙' : '☀️'} ${timeStr} · ${dirLbl} (${Math.round(sunData.elevationDeg)}°)`;
-  }
   const tVal = document.getElementById('sun-time-val');
   if (tVal) tVal.textContent = timeStr;
+  const subTime = document.getElementById('sub-sun-time');
+  if (subTime) subTime.textContent = timeStr;
+  const subSlider = document.getElementById('sub-sun-slider');
+  if (subSlider && Number(subSlider.value) !== state.sunHour) subSlider.value = String(state.sunHour);
   const aVal = document.getElementById('sun-angles-val');
   if (aVal) aVal.textContent = `Az ${Math.round(sunData.azimuthDeg)}° (${dirLbl}) · Elev ${Math.round(sunData.elevationDeg)}°`;
   const srLbl = document.getElementById('sun-sunrise-lbl');
@@ -469,8 +591,9 @@ function flyToView(viewKey) {
   state.activeView = viewKey;
   if (viewKey === 'plan2d') {
     camTween = null;
+    if (rtActive) toggleRayTracing();
     camModes.setMode('plan2d');
-    renderRoomNav(state);
+    renderTopBar(state);
     return;
   }
 
@@ -501,7 +624,7 @@ function flyToView(viewKey) {
     endTarget: new THREE.Vector3(...camSpec.target),
     t: 0
   };
-  renderRoomNav(state);
+  renderTopBar(state);
   renderQuickAddGrid(state);
   renderPaintPanel(state);
   renderBedSection(state);
@@ -532,6 +655,7 @@ function applyFullDesignPayload(parsed) {
   if (Array.isArray(parsed.customLibrary)) state.customLibrary = parsed.customLibrary;
   if (typeof parsed.sunSeason === 'string') state.sunSeason = parsed.sunSeason;
   if (typeof parsed.sunHour === 'number') state.sunHour = parsed.sunHour;
+  if (parsed.theme === 'light' || parsed.theme === 'dark') state.theme = parsed.theme;
 
   rebuildAllMovables();
   applyAllRoomPaints();
@@ -540,7 +664,8 @@ function applyFullDesignPayload(parsed) {
   applyAmbillySun();
   refreshOverlaysAndDiagnostics();
   saveState(state);
-  renderAllPanels(state, lastDiagnostics);
+  renderAllPanels(state, lastDiagnostics, getDockExtra());
+  refreshInspector();
   notifyRayTracerGeometryChange();
 }
 
@@ -569,17 +694,23 @@ function notifyRayTracerMaterialChange() {
   if (rtActive && rayTracer) rayTracer.notifyMaterialsChanged();
 }
 
+function saveViewportPng() {
+  const a = document.createElement('a');
+  a.download = `cassiopee-ambilly-render-${Date.now()}.png`;
+  a.href = renderer.domElement.toDataURL('image/png');
+  a.click();
+  showToast('Saved high-res PNG render!');
+}
+
 async function toggleRayTracing() {
-  const btnLabel = document.getElementById('rt-btn-label');
-  const sideBtn = document.getElementById('btn-sidebar-rt');
   const hud = document.getElementById('rt-hud');
+  const launchBtn = document.getElementById('sub-launch-rt');
 
   if (rtActive && rayTracer) {
     rayTracer.disable();
     rtActive = false;
     hud.classList.add('hidden');
-    btnLabel.textContent = 'Photo Render (RT)';
-    sideBtn.textContent = 'Launch Photo Render (RT)';
+    renderModeDockAndSubbar(state, getDockExtra());
     applyAmbillySun();
     showToast('Returned to 60fps Realtime PBR + N8AO');
     return;
@@ -587,9 +718,7 @@ async function toggleRayTracing() {
 
   // Ensure Perspective camera for Path Tracing
   if (camModes.mode === 'plan2d') camModes.setMode('orbit');
-
-  btnLabel.textContent = 'Building BVH…';
-  sideBtn.textContent = 'Building BVH Scene…';
+  if (launchBtn) launchBtn.textContent = '⏳ Building BVH…';
 
   try {
     const mod = await import('./raytracer.js');
@@ -614,20 +743,19 @@ async function toggleRayTracing() {
 
     rayTracer.lightRefs.pendantLights = dynamicFixtureLights;
     if (manipulator.selectedUid) manipulator.select(null);
+    setSelection(null);
 
     const sunData = computeAmbillySun(state.sunSeason, state.sunHour);
     await rayTracer.enable({ sunData, d65Override: state.d65Override }, () => {});
     rtActive = true;
     hud.classList.remove('hidden');
-    btnLabel.textContent = 'Exit RT';
-    sideBtn.textContent = 'Exit Photo Render (Back to Realtime)';
+    renderModeDockAndSubbar(state, getDockExtra());
     updateRtHudControls();
     requestRender();
     showToast(`Photo Path Tracing active (${rayTracer.gpuLabel} · ${rayTracer.profileKey.toUpperCase()})`);
   } catch (err) {
     console.error('Ray tracing init error:', err);
-    btnLabel.textContent = 'Photo Render (RT)';
-    sideBtn.textContent = 'Launch Photo Render (RT)';
+    renderModeDockAndSubbar(state, getDockExtra());
     showToast('Ray tracing unavailable on this GPU');
   }
 }
@@ -649,7 +777,7 @@ function updateRtHudControls() {
 }
 
 /* =========================================================================
- * 5. TOAST, SELECTION HUD & PROMPT EXECUTION
+ * 5. TOAST, ITEM ACTIONS & PROMPT EXECUTION
  * ========================================================================= */
 let toastTimer = null;
 function showToast(msg) {
@@ -661,45 +789,53 @@ function showToast(msg) {
   toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 2400);
 }
 
-function updateSelectionHUD(item, clearance) {
-  const hud = document.getElementById('selection-hud');
-  const promptPill = document.getElementById('prompt-selected-pill');
-  const promptName = document.getElementById('prompt-selected-name');
-  if (!item) {
-    hud.classList.add('hidden');
-    if (promptPill) promptPill.classList.add('hidden');
-    return;
+function rotateSelected(rad) {
+  const item = state.items.find(i => i.uid === manipulator.selectedUid);
+  if (!item) return;
+  item.rotY = (item.rotY || 0) + rad;
+  const mesh = movableGroup.children.find(m => m.userData.uid === item.uid);
+  if (mesh) {
+    mesh.rotation.y = item.rotY;
+    manipulator.updateSelectionVisual();
+    updateInspectorClearanceText(manipulator.computeClearance(item, mesh));
   }
-  hud.classList.remove('hidden');
-  if (promptPill && promptName) {
-    promptName.textContent = item.label || item.kind;
-    promptPill.classList.remove('hidden');
-  }
-  document.getElementById('sel-name').textContent = item.label || item.kind;
-  const clEl = document.getElementById('sel-clearance');
-  if (clearance && clearance.northCm !== undefined) {
-    const snapTag = clearance.snappedWall ? ` · 🧲 ${clearance.snappedWall}` : '';
-    clEl.textContent = `${clearance.roomName} · ${clearance.wCm}×${clearance.dCm}cm · N:${clearance.northCm} S:${clearance.southCm} W:${clearance.westCm} E:${clearance.eastCm}cm${snapTag}`;
-  } else if (clearance) {
-    clEl.textContent = `${clearance.wCm} × ${clearance.dCm} cm · Drag to move`;
-  } else {
-    clEl.textContent = 'Drag on floor · Orange knob to rotate';
-  }
+  undoMgr.snapshot(state);
+  saveState(state);
+  refreshOverlaysAndDiagnostics();
+  notifyRayTracerGeometryChange();
+}
 
-  const yCm = Math.round((item.y || 0) * 100);
-  const ySlider = document.getElementById('sel-y-slider');
-  const yVal = document.getElementById('sel-y-val');
-  if (ySlider) ySlider.value = String(yCm);
-  if (yVal) yVal.textContent = `${yCm}`;
+function duplicateSelected() {
+  const item = state.items.find(i => i.uid === manipulator.selectedUid);
+  if (!item) return;
+  const clone = JSON.parse(JSON.stringify(item));
+  clone.uid = `dup-${Date.now().toString(36)}`;
+  clone.x = Math.min(10.8, item.x + 0.35);
+  clone.z = Math.min(10.7, item.z + 0.35);
+  state.items.push(clone);
+  rebuildSingleMovable(clone.uid);
+  manipulator.select(clone.uid);
+  undoMgr.snapshot(state);
+  saveState(state);
+  notifyRayTracerGeometryChange();
+  showToast(`Duplicated ${item.label}`);
+}
 
-  const extBtn = document.getElementById('sel-extend');
-  if (item.kind === 'diningTable') {
-    const def = MOBILIFIVER_TABLES.find(t => t.id === item.modelId) || MOBILIFIVER_TABLES[0];
-    const nextStep = ((item.extensionStep || 0) + 1) % 3;
-    extBtn.textContent = `↔ ${Math.round(def.lengths[nextStep] * 100)} cm`;
-    extBtn.classList.remove('hidden');
-  } else {
-    extBtn.classList.add('hidden');
+function deleteSelected() {
+  const uid = manipulator.selectedUid;
+  if (!uid) return;
+  const idx = state.items.findIndex(i => i.uid === uid);
+  if (idx >= 0) {
+    const removed = state.items.splice(idx, 1)[0];
+    manipulator.select(null);
+    setSelection(null);
+    rebuildAllMovables();
+    undoMgr.snapshot(state);
+    saveState(state);
+    refreshOverlaysAndDiagnostics();
+    renderAllPanels(state, lastDiagnostics, getDockExtra());
+    notifyRayTracerGeometryChange();
+    showToast(`Removed ${removed.label}`);
   }
 }
 
@@ -771,9 +907,14 @@ async function executePrompt(text) {
     }
   }
 
-  fb.textContent = res.message;
-  fb.classList.remove('hidden');
-  if (res.type === 'noop') return;
+  if (fb) {
+    fb.textContent = res.message;
+    fb.classList.remove('hidden');
+  }
+  if (res.type === 'noop') {
+    showToast(res.message);
+    return;
+  }
 
   if (res.type === 'setSun') {
     state.d65Override = false;
@@ -854,15 +995,158 @@ async function executePrompt(text) {
 
   undoMgr.snapshot(state);
   saveState(state);
-  renderAllPanels(state, lastDiagnostics);
+  renderAllPanels(state, lastDiagnostics, getDockExtra());
+  refreshInspector();
   showToast(res.message);
 }
 
 /* =========================================================================
- * 6. EVENT BINDING
+ * 6. SHARED MATERIAL / FURNITURE MUTATION HELPERS (DRAWER + INSPECTOR)
+ * ========================================================================= */
+function applyKitchenAction(target) {
+  const dBtn = target.closest('[data-door-id]');
+  if (dBtn) {
+    state.kitchen.doorId = dBtn.dataset.doorId;
+    kitchenBuilder.applyDoor(state.kitchen.doorId);
+    renderKitchenPanel(state);
+    refreshInspector();
+    renderTopBar(state);
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange(); requestRender();
+    return true;
+  }
+  const cBtn = target.closest('[data-ct-id]');
+  if (cBtn) {
+    state.kitchen.countertopId = cBtn.dataset.ctId;
+    kitchenBuilder.applyCountertop(state.kitchen.countertopId);
+    renderKitchenPanel(state);
+    refreshInspector();
+    renderTopBar(state);
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange(); requestRender();
+    return true;
+  }
+  const clH = target.closest('[data-cl-h]');
+  if (clH) {
+    state.kitchen.claustraHeight = clH.dataset.clH;
+    kitchenBuilder.applyClaustra(state.kitchen.claustraHeight, state.kitchen.claustraFinish);
+    renderKitchenPanel(state);
+    refreshInspector();
+    renderTopBar(state);
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange(); requestRender();
+    return true;
+  }
+  const clF = target.closest('[data-cl-f]');
+  if (clF) {
+    state.kitchen.claustraFinish = clF.dataset.clF;
+    kitchenBuilder.applyClaustra(state.kitchen.claustraHeight, state.kitchen.claustraFinish);
+    renderKitchenPanel(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange(); requestRender();
+    return true;
+  }
+  const bs = target.closest('[data-bs]');
+  if (bs) {
+    state.kitchen.backsplash = bs.dataset.bs;
+    kitchenBuilder.applyBacksplash(state.kitchen.backsplash);
+    renderKitchenPanel(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange(); requestRender();
+    return true;
+  }
+  const hw = target.closest('[data-hw]');
+  if (hw) {
+    state.kitchen.hardware = hw.dataset.hw;
+    kitchenBuilder.applyHardware(state.kitchen.hardware);
+    renderKitchenPanel(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange(); requestRender();
+    return true;
+  }
+  return false;
+}
+
+function applySofaOrTableAction(target) {
+  const extBtn = target.closest('[data-ext]');
+  if (extBtn) {
+    const tb = state.items.find(i => i.kind === 'diningTable');
+    if (!tb) return true;
+    tb.extensionStep = Number(extBtn.dataset.ext);
+    rebuildSingleMovable(tb.uid);
+    renderTableSection(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
+    return true;
+  }
+  const tbFin = target.closest('[data-tb-fin]');
+  if (tbFin) {
+    const tb = state.items.find(i => i.kind === 'diningTable');
+    if (!tb) return true;
+    tb.finish = tbFin.dataset.tbFin;
+    rebuildSingleMovable(tb.uid);
+    renderTableSection(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
+    return true;
+  }
+  const tbModel = target.closest('[data-tb-model]');
+  if (tbModel) {
+    const tb = state.items.find(i => i.kind === 'diningTable');
+    if (!tb) return true;
+    tb.modelId = tbModel.dataset.tbModel;
+    rebuildSingleMovable(tb.uid);
+    renderTableSection(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
+    return true;
+  }
+  const chaiseBtn = target.closest('[data-chaise]');
+  if (chaiseBtn) {
+    const sofa = state.items.find(i => i.kind === 'sofa');
+    if (!sofa) return true;
+    sofa.chaise = chaiseBtn.dataset.chaise;
+    rebuildSingleMovable(sofa.uid);
+    renderSofaSection(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
+    return true;
+  }
+  const sofaFab = target.closest('[data-sofa-fab]');
+  if (sofaFab) {
+    const sofa = state.items.find(i => i.kind === 'sofa');
+    if (!sofa) return true;
+    sofa.fabric = sofaFab.dataset.sofaFab;
+    rebuildSingleMovable(sofa.uid);
+    renderSofaSection(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
+    return true;
+  }
+  const sofaModel = target.closest('[data-sofa-model]');
+  if (sofaModel) {
+    const sofa = state.items.find(i => i.kind === 'sofa');
+    if (!sofa) return true;
+    const def = IKEA_SOFAS.find(s => s.id === sofaModel.dataset.sofaModel);
+    if (!def) return true;
+    sofa.modelId = def.id;
+    if (!def.supportsChaise) sofa.chaise = 'none';
+    rebuildSingleMovable(sofa.uid);
+    renderSofaSection(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
+    showToast(`Living Sofa → IKEA ${def.name}`);
+    return true;
+  }
+  return false;
+}
+
+/* =========================================================================
+ * 7. EVENT BINDING
  * ========================================================================= */
 function bindEvents() {
-  // Camera Mode Switcher (3D / 2D Plan / Walk)
+  // ---- TOP HEADER BAR ----
+  document.getElementById('room-jump-select').addEventListener('change', (e) => {
+    flyToView(e.target.value);
+  });
+
   document.querySelectorAll('.cam-mode-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       if (rtActive && btn.dataset.camMode === 'plan2d') toggleRayTracing();
@@ -877,7 +1161,49 @@ function bindEvents() {
     });
   });
 
-  // Tools & Overlays Popover Controls
+  document.getElementById('btn-undo').addEventListener('click', undo);
+  document.getElementById('btn-redo').addEventListener('click', redo);
+
+  document.querySelectorAll('.scenario-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const slot = btn.dataset.scenario;
+      const all = loadScenarios();
+      if (all[slot]?.payload && slot !== state.activeScenario) {
+        state.activeScenario = slot;
+        applyFullDesignPayload(mergeAndValidateState(all[slot].payload));
+        undoMgr.snapshot(state);
+        renderScenarioButtons(state);
+        showToast(`Loaded Scenario ${slot}`);
+      } else {
+        state.activeScenario = slot;
+        saveScenarioSlot(slot, state);
+        renderScenarioButtons(state);
+        showToast(`Saved current design to Scenario ${slot}`);
+      }
+    });
+  });
+
+  document.getElementById('top-budget-pill').addEventListener('click', () => openDrawer('budget'));
+
+  document.getElementById('btn-theme').addEventListener('click', () => {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    renderTheme(state);
+    saveState(state);
+    showToast(state.theme === 'dark' ? '🌙 Dark ArchViz Obsidian Studio' : '☀️ Warm Alabaster Light Studio');
+  });
+
+  const shortcutsModal = document.getElementById('shortcuts-modal');
+  document.getElementById('btn-shortcuts').addEventListener('click', () => {
+    shortcutsModal.classList.toggle('hidden');
+  });
+  document.getElementById('btn-close-shortcuts').addEventListener('click', () => {
+    shortcutsModal.classList.add('hidden');
+  });
+  shortcutsModal.addEventListener('click', (e) => {
+    if (e.target === shortcutsModal) shortcutsModal.classList.add('hidden');
+  });
+
+  // ---- LAYERS & DISPLAY OVERLAYS POPOVER ----
   document.getElementById('btn-roof').addEventListener('click', () => setCeilingsVisible(!state.showCeilings));
   document.getElementById('btn-building').addEventListener('click', () => {
     setBuildingContextVisible(!state.showBuilding);
@@ -907,28 +1233,12 @@ function bindEvents() {
     refreshOverlaysAndDiagnostics();
     showToast(state.showTmaOverlay ? 'TMA Electrical & Plumbing Plan ON' : 'TMA Overlay OFF');
   });
-
-  const toggleMeasure = () => {
-    const next = !tapeMeasure.active;
-    tapeMeasure.setActive(next);
-    if (next) manipulator.select(null);
-    document.getElementById('lbl-measure').textContent = next ? 'ON' : 'OFF';
-    document.getElementById('btn-measure-clear').classList.toggle('hidden', !next && !tapeMeasure._linesGroup.children.length);
-    showToast(next ? 'Tape Measure ON — click any 2 points in 3D' : 'Tape Measure OFF');
-  };
-  document.getElementById('btn-measure').addEventListener('click', toggleMeasure);
-  document.getElementById('btn-measure-clear').addEventListener('click', () => {
-    tapeMeasure.clearAll();
-    showToast('Cleared measurements');
-  });
-
   document.getElementById('btn-snap').addEventListener('click', () => {
     manipulator.snapEnabled = !manipulator.snapEnabled;
     manipulator.wallSnapEnabled = manipulator.snapEnabled;
     document.getElementById('lbl-snap').textContent = manipulator.snapEnabled ? 'ON' : 'OFF';
     showToast(manipulator.snapEnabled ? '5 cm Grid & Magnetic Wall Snap ON' : 'Free Dragging ON');
   });
-
   document.getElementById('btn-postfx').addEventListener('click', () => {
     const order = ['high', 'fast', 'off'];
     const next = order[(order.indexOf(state.postFxQuality) + 1) % order.length];
@@ -939,41 +1249,192 @@ function bindEvents() {
     showToast(`Realtime AO & Bloom FX: ${next.toUpperCase()}`);
   });
 
-  // Undo / Redo / Scenarios A-B-C
-  document.getElementById('btn-undo').addEventListener('click', undo);
-  document.getElementById('btn-redo').addEventListener('click', redo);
+  // ---- LEFT ICON RAIL & LIBRARY DRAWER ----
+  document.getElementById('left-rail').addEventListener('click', (e) => {
+    const btn = e.target.closest('.rail-btn');
+    if (btn?.dataset.drawer) openDrawer(btn.dataset.drawer);
+  });
+  document.getElementById('btn-close-drawer').addEventListener('click', () => {
+    state.openDrawer = null;
+    renderLeftRailAndDrawer(state);
+  });
 
-  document.querySelectorAll('.scenario-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const slot = btn.dataset.scenario;
-      const all = loadScenarios();
-      if (all[slot]?.payload && slot !== state.activeScenario) {
-        state.activeScenario = slot;
-        applyFullDesignPayload(mergeAndValidateState(all[slot].payload));
-        undoMgr.snapshot(state);
-        renderScenarioButtons(state);
-        showToast(`Loaded Scenario ${slot}`);
-      } else {
-        state.activeScenario = slot;
-        saveScenarioSlot(slot, state);
-        renderScenarioButtons(state);
-        showToast(`Saved current design to Scenario ${slot}`);
+  // ---- BOTTOM 5-MODE DOCK & CONTEXTUAL SUB-BAR ----
+  document.getElementById('mode-dock').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-tool-mode]');
+    if (btn?.dataset.toolMode) setToolMode(btn.dataset.toolMode);
+  });
+
+  const subbar = document.getElementById('mode-subbar');
+  subbar.addEventListener('click', (e) => {
+    const paintBtn = e.target.closest('[data-brush-paint]');
+    if (paintBtn) {
+      state.activeBrushPaintId = paintBtn.dataset.brushPaint;
+      renderModeDockAndSubbar(state, getDockExtra());
+      return;
+    }
+    const covBtn = e.target.closest('[data-brush-cov]');
+    if (covBtn) {
+      state.activeBrushCoverage = covBtn.dataset.brushCov;
+      renderModeDockAndSubbar(state, getDockExtra());
+      return;
+    }
+    if (e.target.closest('#sub-measure-clear')) {
+      tapeMeasure.clearAll();
+      showToast('Cleared measurements');
+      return;
+    }
+    if (e.target.closest('#sub-photo-grid')) {
+      state.showPhotoGrid = !state.showPhotoGrid;
+      renderModeDockAndSubbar(state, getDockExtra());
+      return;
+    }
+    if (e.target.closest('#sub-launch-rt')) {
+      toggleRayTracing();
+      return;
+    }
+    if (e.target.closest('#sub-snap-png')) {
+      saveViewportPng();
+    }
+  });
+  subbar.addEventListener('input', (e) => {
+    if (e.target.id === 'sub-sun-slider') {
+      state.d65Override = false;
+      state.sunHour = parseFloat(e.target.value);
+      applyAmbillySun();
+      saveState(state);
+    }
+  });
+
+  // ---- RIGHT FLOATING CONTEXTUAL INSPECTOR ----
+  document.getElementById('btn-close-inspector').addEventListener('click', () => {
+    manipulator.select(null);
+    setSelection(null);
+  });
+
+  const inspBody = document.getElementById('insp-body');
+  inspBody.addEventListener('click', (e) => {
+    if (e.target.closest('#insp-move-btn')) {
+      const next = state.toolMode === 'arrange' ? 'navigate' : 'arrange';
+      setToolMode(next);
+      return;
+    }
+    const rotBtn = e.target.closest('[data-insp-rot]');
+    if (rotBtn) {
+      const deg = Number(rotBtn.dataset.inspRot);
+      rotateSelected(deg === 15 ? Math.PI / 12 : Math.PI / 2);
+      return;
+    }
+    const actBtn = e.target.closest('[data-insp-action]');
+    if (actBtn) {
+      if (actBtn.dataset.inspAction === 'dup') duplicateSelected();
+      else if (actBtn.dataset.inspAction === 'del') deleteSelected();
+      return;
+    }
+    const openDrBtn = e.target.closest('[data-open-drawer]');
+    if (openDrBtn) {
+      state.openDrawer = openDrBtn.dataset.openDrawer;
+      renderLeftRailAndDrawer(state);
+      return;
+    }
+
+    // Wall Inspector paint & coverage controls
+    const inspCov = e.target.closest('[data-insp-cov]');
+    if (inspCov) {
+      const rid = inspCov.dataset.inspRoom;
+      if (state.roomPaints[rid]) {
+        state.roomPaints[rid].coverage = inspCov.dataset.inspCov;
+        state.activeBrushCoverage = inspCov.dataset.inspCov;
+        applyAllRoomPaints();
+        renderPaintPanel(state);
+        refreshInspector();
+        renderTopBar(state);
+        undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
       }
-    });
-  });
-  document.getElementById('btn-save-scenario').addEventListener('click', () => {
-    saveScenarioSlot(state.activeScenario, state);
-    renderScenarioButtons(state);
-    showToast(`Updated Scenario ${state.activeScenario}`);
+      return;
+    }
+    const inspPaint = e.target.closest('[data-insp-paint]');
+    if (inspPaint) {
+      const rid = inspPaint.dataset.inspRoom;
+      const pid = inspPaint.dataset.inspPaint;
+      if (state.roomPaints[rid]) {
+        state.roomPaints[rid].paintId = pid;
+        state.activeBrushPaintId = pid;
+        applyAllRoomPaints();
+        renderPaintPanel(state);
+        refreshInspector();
+        renderTopBar(state);
+        undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
+      }
+      return;
+    }
+
+    // Bed Inspector controls
+    const inspBedFin = e.target.closest('[data-insp-bed-fin]');
+    if (inspBedFin) {
+      const bed = state.items.find(i => i.uid === inspBedFin.dataset.inspUid);
+      if (bed) {
+        bed.finish = inspBedFin.dataset.inspBedFin;
+        rebuildSingleMovable(bed.uid);
+        renderBedSection(state);
+        refreshInspector();
+        undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
+      }
+      return;
+    }
+    const inspBedModel = e.target.closest('[data-insp-bed-model]');
+    if (inspBedModel) {
+      const bed = state.items.find(i => i.uid === inspBedModel.dataset.inspUid);
+      const def = IKEA_BEDS.find(b => b.id === inspBedModel.dataset.inspBedModel);
+      if (bed && def) {
+        bed.modelId = def.id;
+        bed.finish = def.defaultFinish;
+        rebuildSingleMovable(bed.uid);
+        renderBedSection(state);
+        refreshInspector();
+        undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
+      }
+      return;
+    }
+
+    // Kitchen / Sofa / Dining Table shared actions inside Inspector
+    if (applyKitchenAction(e.target)) return;
+    if (applySofaOrTableAction(e.target)) return;
   });
 
-  document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
-    document.getElementById('app').classList.toggle('sidebar-collapsed');
+  inspBody.addEventListener('input', (e) => {
+    if (e.target.id === 'insp-y-slider') {
+      const item = state.items.find(i => i.uid === manipulator.selectedUid);
+      if (!item) return;
+      const cm = parseInt(e.target.value, 10) || 0;
+      item.y = cm / 100;
+      const valEl = document.getElementById('insp-y-val');
+      if (valEl) valEl.textContent = `${cm}cm`;
+      const mesh = movableGroup.children.find(m => m.userData.uid === item.uid);
+      if (mesh) mesh.position.y = item.y;
+      requestRender();
+      notifyRayTracerGeometryChange();
+    }
+  });
+  inspBody.addEventListener('change', (e) => {
+    if (e.target.id === 'insp-y-slider') {
+      undoMgr.snapshot(state);
+      saveState(state);
+    }
+  });
+  inspBody.addEventListener('submit', (e) => {
+    if (e.target.id === 'insp-refine-form') {
+      e.preventDefault();
+      const inp = document.getElementById('insp-refine-input');
+      const val = inp?.value?.trim();
+      if (val) {
+        inp.value = '';
+        executePrompt(val);
+      }
+    }
   });
 
-  // Photo Render (RT) Controls
-  document.getElementById('btn-raytrace').addEventListener('click', toggleRayTracing);
-  document.getElementById('btn-sidebar-rt').addEventListener('click', toggleRayTracing);
+  // ---- PHOTO RENDER (RT) FLOATING HUD CONTROLS ----
   document.querySelectorAll('.rt-prof-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       if (!rayTracer) return;
@@ -1002,109 +1463,12 @@ function bindEvents() {
     updateRtHudControls();
     requestRender();
   });
-  document.getElementById('btn-rt-save').addEventListener('click', () => {
-    const a = document.createElement('a');
-    a.download = `cassiopee-ambilly-render-${Date.now()}.png`;
-    a.href = renderer.domElement.toDataURL('image/png');
-    a.click();
-    showToast('Saved high-res PNG render!');
-  });
 
-  // Room Nav & Sidebar Tabs
-  document.getElementById('room-nav').addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-view]');
-    if (btn) flyToView(btn.dataset.view);
-  });
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.activeTab = btn.dataset.tab;
-      renderTabs(state);
-      if (state.activeTab === 'budget') renderBudgetPanel(state, lastDiagnostics);
-    });
-  });
-
-  // Selection HUD Actions (Rotate, Y Elevation, Extend, Duplicate, Delete)
-  const rotateSelected = (rad) => {
-    const item = state.items.find(i => i.uid === manipulator.selectedUid);
-    if (!item) return;
-    item.rotY = (item.rotY || 0) + rad;
-    const mesh = movableGroup.children.find(m => m.userData.uid === item.uid);
-    if (mesh) {
-      mesh.rotation.y = item.rotY;
-      manipulator.updateSelectionVisual();
-      updateSelectionHUD(item, manipulator.computeClearance(item, mesh));
-    }
-    undoMgr.snapshot(state);
-    saveState(state);
-    refreshOverlaysAndDiagnostics();
-    notifyRayTracerGeometryChange();
-  };
-
-  document.getElementById('sel-rot-90').addEventListener('click', () => rotateSelected(Math.PI / 2));
-  document.getElementById('sel-rot-15').addEventListener('click', () => rotateSelected(Math.PI / 12));
-  document.getElementById('sel-y-slider').addEventListener('input', (e) => {
-    const item = state.items.find(i => i.uid === manipulator.selectedUid);
-    if (!item) return;
-    const cm = parseInt(e.target.value, 10) || 0;
-    item.y = cm / 100;
-    document.getElementById('sel-y-val').textContent = String(cm);
-    const mesh = movableGroup.children.find(m => m.userData.uid === item.uid);
-    if (mesh) mesh.position.y = item.y;
-    requestRender();
-    notifyRayTracerGeometryChange();
-  });
-  document.getElementById('sel-y-slider').addEventListener('change', () => {
-    undoMgr.snapshot(state);
-    saveState(state);
-  });
-  document.getElementById('sel-extend').addEventListener('click', () => {
-    const item = state.items.find(i => i.uid === manipulator.selectedUid && i.kind === 'diningTable');
-    if (!item) return;
-    item.extensionStep = ((item.extensionStep || 0) + 1) % 3;
-    rebuildSingleMovable(item.uid);
-    renderTableSection(state);
-    undoMgr.snapshot(state);
-    saveState(state);
-    notifyRayTracerGeometryChange();
-  });
-  document.getElementById('sel-dup').addEventListener('click', () => {
-    const item = state.items.find(i => i.uid === manipulator.selectedUid);
-    if (!item) return;
-    const clone = JSON.parse(JSON.stringify(item));
-    clone.uid = `dup-${Date.now().toString(36)}`;
-    clone.x = Math.min(10.8, item.x + 0.35);
-    clone.z = Math.min(10.7, item.z + 0.35);
-    state.items.push(clone);
-    rebuildSingleMovable(clone.uid);
-    manipulator.select(clone.uid);
-    undoMgr.snapshot(state);
-    saveState(state);
-    notifyRayTracerGeometryChange();
-    showToast(`Duplicated ${item.label}`);
-  });
-  document.getElementById('sel-del').addEventListener('click', () => {
-    const uid = manipulator.selectedUid;
-    if (!uid) return;
-    const idx = state.items.findIndex(i => i.uid === uid);
-    if (idx >= 0) {
-      const removed = state.items.splice(idx, 1)[0];
-      manipulator.select(null);
-      rebuildAllMovables();
-      undoMgr.snapshot(state);
-      saveState(state);
-      refreshOverlaysAndDiagnostics();
-      renderAllPanels(state, lastDiagnostics);
-      notifyRayTracerGeometryChange();
-      showToast(`Removed ${removed.label}`);
-    }
-  });
-  document.getElementById('sel-close').addEventListener('click', () => manipulator.select(null));
-
-  // ---- TAB 1: FURNITURE ----
+  // ---- DRAWER 1: CATALOG (FURNITURE) ----
   document.getElementById('btn-focus-table').addEventListener('click', () => {
     const tb = state.items.find(i => i.kind === 'diningTable');
     state.activeView = 'sejour';
-    renderRoomNav(state);
+    renderTopBar(state);
     if (tb) {
       manipulator.select(tb.uid);
       flyToCustomCamera([0.45, 2.25, 8.40], [tb.x + 0.15, 0.72, tb.z - 0.15], true);
@@ -1113,44 +1477,16 @@ function bindEvents() {
   document.getElementById('btn-focus-sofa').addEventListener('click', () => {
     const sf = state.items.find(i => i.kind === 'sofa');
     state.activeView = 'sejour';
-    renderRoomNav(state);
+    renderTopBar(state);
     if (sf) {
       manipulator.select(sf.uid);
       flyToCustomCamera([2.15, 1.95, 8.42], [sf.x + 0.85, 0.72, sf.z - 0.10], true);
     } else flyToView('sejour');
   });
 
-  document.getElementById('panel-furniture').addEventListener('click', (e) => {
-    const extBtn = e.target.closest('[data-ext]');
-    if (extBtn) {
-      const tb = state.items.find(i => i.kind === 'diningTable');
-      if (!tb) return;
-      tb.extensionStep = Number(extBtn.dataset.ext);
-      rebuildSingleMovable(tb.uid);
-      renderTableSection(state);
-      undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
-      return;
-    }
-    const tbFin = e.target.closest('[data-tb-fin]');
-    if (tbFin) {
-      const tb = state.items.find(i => i.kind === 'diningTable');
-      if (!tb) return;
-      tb.finish = tbFin.dataset.tbFin;
-      rebuildSingleMovable(tb.uid);
-      renderTableSection(state);
-      undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
-      return;
-    }
-    const tbModel = e.target.closest('[data-tb-model]');
-    if (tbModel) {
-      const tb = state.items.find(i => i.kind === 'diningTable');
-      if (!tb) return;
-      tb.modelId = tbModel.dataset.tbModel;
-      rebuildSingleMovable(tb.uid);
-      renderTableSection(state);
-      undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
-      return;
-    }
+  document.getElementById('panel-catalog').addEventListener('click', (e) => {
+    if (applySofaOrTableAction(e.target)) return;
+
     const bedRoomBtn = e.target.closest('[data-bed-room]');
     if (bedRoomBtn) {
       state.activeBedRoom = bedRoomBtn.dataset.bedRoom;
@@ -1165,6 +1501,7 @@ function bindEvents() {
       bed.finish = bedFinBtn.dataset.bedFin;
       rebuildSingleMovable(bed.uid);
       renderBedSection(state);
+      refreshInspector();
       undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
       return;
     }
@@ -1198,39 +1535,6 @@ function bindEvents() {
       showToast(`${state.activeBedRoom.toUpperCase()} → IKEA ${def.name}`);
       return;
     }
-    const chaiseBtn = e.target.closest('[data-chaise]');
-    if (chaiseBtn) {
-      const sofa = state.items.find(i => i.kind === 'sofa');
-      if (!sofa) return;
-      sofa.chaise = chaiseBtn.dataset.chaise;
-      rebuildSingleMovable(sofa.uid);
-      renderSofaSection(state);
-      undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
-      return;
-    }
-    const sofaFab = e.target.closest('[data-sofa-fab]');
-    if (sofaFab) {
-      const sofa = state.items.find(i => i.kind === 'sofa');
-      if (!sofa) return;
-      sofa.fabric = sofaFab.dataset.sofaFab;
-      rebuildSingleMovable(sofa.uid);
-      renderSofaSection(state);
-      undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
-      return;
-    }
-    const sofaModel = e.target.closest('[data-sofa-model]');
-    if (sofaModel) {
-      const sofa = state.items.find(i => i.kind === 'sofa');
-      if (!sofa) return;
-      const def = IKEA_SOFAS.find(s => s.id === sofaModel.dataset.sofaModel);
-      sofa.modelId = def.id;
-      if (!def.supportsChaise) sofa.chaise = 'none';
-      rebuildSingleMovable(sofa.uid);
-      renderSofaSection(state);
-      undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
-      showToast(`Living Sofa → IKEA ${def.name}`);
-      return;
-    }
     const qBtn = e.target.closest('[data-quick-add]');
     if (qBtn) {
       const tpl = QUICK_ADD_ITEMS.find(q => q.id === qBtn.dataset.quickAdd);
@@ -1254,54 +1558,7 @@ function bindEvents() {
     }
   });
 
-  // ---- TAB 2: PAINT ----
-  document.getElementById('btn-paint-reset-all').addEventListener('click', () => {
-    Object.keys(state.roomPaints).forEach(k => { state.roomPaints[k] = { paintId: 'original-white', coverage: 'all' }; });
-    applyAllRoomPaints();
-    renderPaintPanel(state);
-    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
-    showToast('All rooms reset to Original Promoteur White');
-  });
-  document.getElementById('btn-paint-curated').addEventListener('click', () => {
-    state.roomPaints.ch3    = { paintId: 'dv-taupe-clair', coverage: 'accent' };
-    state.roomPaints.ch1    = { paintId: 'dv-lin-naturel', coverage: 'all' };
-    state.roomPaints.ch2    = { paintId: 'dv-beige-cachemire', coverage: 'all' };
-    state.roomPaints.wc     = { paintId: 'dv-vert-sauge', coverage: 'all' };
-    state.roomPaints.sejour = { paintId: 'original-white', coverage: 'all' };
-    applyAllRoomPaints();
-    renderPaintPanel(state);
-    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
-    showToast('Applied Curated Dulux Mix');
-  });
-  document.getElementById('panel-paint').addEventListener('click', (e) => {
-    const rBtn = e.target.closest('[data-paint-room]');
-    if (rBtn) {
-      state.activePaintRoom = rBtn.dataset.paintRoom;
-      renderPaintPanel(state);
-      flyToView(state.activePaintRoom);
-      return;
-    }
-    const covBtn = e.target.closest('[data-cov]');
-    if (covBtn) {
-      state.roomPaints[state.activePaintRoom].coverage = covBtn.dataset.cov;
-      applyAllRoomPaints();
-      renderPaintPanel(state);
-      undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
-      return;
-    }
-    const pBtn = e.target.closest('[data-paint-id]');
-    if (pBtn) {
-      const pid = pBtn.dataset.paintId;
-      state.roomPaints[state.activePaintRoom].paintId = pid;
-      applyAllRoomPaints();
-      renderPaintPanel(state);
-      undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
-      const pDef = DULUX_PAINTS.find(p => p.id === pid);
-      showToast(`${state.activePaintRoom.toUpperCase()} → ${pDef.name}`);
-    }
-  });
-
-  // ---- TAB 3: KITCHEN ----
+  // ---- DRAWER 2: IKEA METOD KITCHEN ----
   document.getElementById('btn-focus-kitchen').addEventListener('click', () => flyToView('kitchen'));
   document.getElementById('btn-pin-combo').addEventListener('click', () => {
     if (state.kitchen.comboA) {
@@ -1322,57 +1579,74 @@ function bindEvents() {
     kitchenBuilder.applyDoor(state.kitchen.doorId);
     kitchenBuilder.applyCountertop(state.kitchen.countertopId);
     renderKitchenPanel(state);
+    refreshInspector();
     notifyRayTracerGeometryChange();
     requestRender();
     showToast(`Swapped → ${DOORS.find(d => d.id === state.kitchen.doorId)?.shortName}`);
   };
   document.getElementById('btn-swap-combo').addEventListener('click', swapKitchenAB);
-
   document.getElementById('panel-kitchen').addEventListener('click', (e) => {
-    const dBtn = e.target.closest('[data-door-id]');
-    if (dBtn) {
-      state.kitchen.doorId = dBtn.dataset.doorId;
-      kitchenBuilder.applyDoor(state.kitchen.doorId);
-      renderKitchenPanel(state); undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange(); requestRender();
+    applyKitchenAction(e.target);
+  });
+
+  // ---- DRAWER 3: DULUX WALL PAINTS ----
+  document.getElementById('btn-paint-reset-all').addEventListener('click', () => {
+    Object.keys(state.roomPaints).forEach(k => { state.roomPaints[k] = { paintId: 'original-white', coverage: 'all' }; });
+    applyAllRoomPaints();
+    renderPaintPanel(state);
+    renderTopBar(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
+    showToast('All rooms reset to Original Promoteur White');
+  });
+  document.getElementById('btn-paint-curated').addEventListener('click', () => {
+    state.roomPaints.ch3    = { paintId: 'dv-taupe-clair', coverage: 'accent' };
+    state.roomPaints.ch1    = { paintId: 'dv-lin-naturel', coverage: 'all' };
+    state.roomPaints.ch2    = { paintId: 'dv-beige-cachemire', coverage: 'all' };
+    state.roomPaints.wc     = { paintId: 'dv-vert-sauge', coverage: 'all' };
+    state.roomPaints.sejour = { paintId: 'original-white', coverage: 'all' };
+    applyAllRoomPaints();
+    renderPaintPanel(state);
+    renderTopBar(state);
+    refreshInspector();
+    undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
+    showToast('Applied Curated Dulux Mix');
+  });
+  document.getElementById('panel-paint').addEventListener('click', (e) => {
+    const rBtn = e.target.closest('[data-paint-room]');
+    if (rBtn) {
+      state.activePaintRoom = rBtn.dataset.paintRoom;
+      renderPaintPanel(state);
+      flyToView(state.activePaintRoom);
       return;
     }
-    const cBtn = e.target.closest('[data-ct-id]');
-    if (cBtn) {
-      state.kitchen.countertopId = cBtn.dataset.ctId;
-      kitchenBuilder.applyCountertop(state.kitchen.countertopId);
-      renderKitchenPanel(state); undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange(); requestRender();
+    const covBtn = e.target.closest('[data-cov]');
+    if (covBtn) {
+      state.roomPaints[state.activePaintRoom].coverage = covBtn.dataset.cov;
+      state.activeBrushCoverage = covBtn.dataset.cov;
+      applyAllRoomPaints();
+      renderPaintPanel(state);
+      renderTopBar(state);
+      refreshInspector();
+      undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
       return;
     }
-    const clH = e.target.closest('[data-cl-h]');
-    if (clH) {
-      state.kitchen.claustraHeight = clH.dataset.clH;
-      kitchenBuilder.applyClaustra(state.kitchen.claustraHeight, state.kitchen.claustraFinish);
-      renderKitchenPanel(state); undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange(); requestRender();
-      return;
-    }
-    const clF = e.target.closest('[data-cl-f]');
-    if (clF) {
-      state.kitchen.claustraFinish = clF.dataset.clF;
-      kitchenBuilder.applyClaustra(state.kitchen.claustraHeight, state.kitchen.claustraFinish);
-      renderKitchenPanel(state); undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange(); requestRender();
-      return;
-    }
-    const bs = e.target.closest('[data-bs]');
-    if (bs) {
-      state.kitchen.backsplash = bs.dataset.bs;
-      kitchenBuilder.applyBacksplash(state.kitchen.backsplash);
-      renderKitchenPanel(state); undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange(); requestRender();
-      return;
-    }
-    const hw = e.target.closest('[data-hw]');
-    if (hw) {
-      state.kitchen.hardware = hw.dataset.hw;
-      kitchenBuilder.applyHardware(state.kitchen.hardware);
-      renderKitchenPanel(state); undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange(); requestRender();
+    const pBtn = e.target.closest('[data-paint-id]');
+    if (pBtn) {
+      const pid = pBtn.dataset.paintId;
+      state.roomPaints[state.activePaintRoom].paintId = pid;
+      state.activeBrushPaintId = pid;
+      applyAllRoomPaints();
+      renderPaintPanel(state);
+      renderTopBar(state);
+      refreshInspector();
+      undoMgr.snapshot(state); saveState(state); notifyRayTracerMaterialChange();
+      const pDef = DULUX_PAINTS.find(p => p.id === pid);
+      showToast(`${state.activePaintRoom.toUpperCase()} → ${pDef.name}`);
     }
   });
 
-  // ---- TAB 4: SUN, LIGHTS & JSON IMPORT/EXPORT ----
+  // ---- DRAWER 4: AMBILLY SUN & TMA LIGHTS ----
   document.getElementById('sun-hour-slider').addEventListener('input', (e) => {
     state.d65Override = false;
     state.sunHour = parseFloat(e.target.value);
@@ -1382,13 +1656,13 @@ function bindEvents() {
   document.getElementById('btn-sun-play').addEventListener('click', () => {
     sunPlaying = !sunPlaying;
     state.d65Override = false;
-    document.getElementById('btn-sun-play').textContent = sunPlaying ? '⏸ Pause Sun' : '▶ Play Day';
+    document.getElementById('btn-sun-play').textContent = sunPlaying ? '⏸ Pause' : '▶ Play';
     requestRender();
   });
   document.getElementById('btn-d65-toggle').addEventListener('click', () => {
     state.d65Override = !state.d65Override;
     sunPlaying = false;
-    document.getElementById('btn-sun-play').textContent = '▶ Play Day';
+    document.getElementById('btn-sun-play').textContent = '▶ Play';
     renderLightsPanel(state);
     applyAmbillySun();
   });
@@ -1406,7 +1680,7 @@ function bindEvents() {
     if (qSun) {
       state.d65Override = false;
       sunPlaying = false;
-      document.getElementById('btn-sun-play').textContent = '▶ Play Day';
+      document.getElementById('btn-sun-play').textContent = '▶ Play';
       state.sunHour = parseFloat(qSun.dataset.sunQuick);
       applyAmbillySun();
       saveState(state);
@@ -1417,48 +1691,13 @@ function bindEvents() {
       state.roomFixtures[fBtn.dataset.fixRoom] = fBtn.dataset.fixStyle;
       rebuildLights();
       renderLightsPanel(state);
+      renderTopBar(state);
       undoMgr.snapshot(state); saveState(state); notifyRayTracerGeometryChange();
       showToast(`Updated ${fBtn.dataset.fixRoom.toUpperCase()} light fixture`);
     }
   });
 
-  document.getElementById('btn-export-json').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(serializeDesignPayload(state), null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'cassiopee-ambilly-lot17-layout.json';
-    a.click();
-    showToast('Exported apartment layout JSON');
-  });
-
-  document.getElementById('json-import-input').addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const validated = mergeAndValidateState(JSON.parse(text));
-      applyFullDesignPayload(validated);
-      undoMgr.snapshot(state);
-      showToast(`Imported layout from ${file.name}`);
-    } catch (err) {
-      console.error('JSON import error:', err);
-      showToast('Invalid layout JSON file');
-    }
-    e.target.value = '';
-  });
-
-  document.getElementById('btn-reset-layout').addEventListener('click', () => {
-    localStorage.removeItem(STORAGE_KEY);
-    state = createDefaultState();
-    applyFullDesignPayload(state);
-    setBuildingContextVisible(state.showBuilding);
-    setCurtainsVisible(state.showCurtains);
-    manipulator.select(null);
-    undoMgr.snapshot(state);
-    showToast('Reset apartment to defaults');
-  });
-
-  // ---- TAB 5: PROMPT STUDIO & INDEXEDDB GLB IMPORT ----
+  // ---- DRAWER 5: PROMPT STUDIO & INDEXEDDB GLB IMPORT ----
   document.getElementById('prompt-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const inp = document.getElementById('prompt-input');
@@ -1537,27 +1776,88 @@ function bindEvents() {
     }
   });
 
-  // ---- KEYBOARD SHORTCUTS ----
+  // ---- DRAWER 7: SCENARIOS & JSON BACKUP ----
+  document.getElementById('btn-save-scenario').addEventListener('click', () => {
+    saveScenarioSlot(state.activeScenario, state);
+    renderScenarioButtons(state);
+    showToast(`Updated Scenario ${state.activeScenario}`);
+  });
+
+  document.getElementById('btn-export-json').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(serializeDesignPayload(state), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cassiopee-ambilly-lot17-layout.json';
+    a.click();
+    showToast('Exported apartment layout JSON');
+  });
+
+  document.getElementById('json-import-input').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const validated = mergeAndValidateState(JSON.parse(text));
+      applyFullDesignPayload(validated);
+      undoMgr.snapshot(state);
+      showToast(`Imported layout from ${file.name}`);
+    } catch (err) {
+      console.error('JSON import error:', err);
+      showToast('Invalid layout JSON file');
+    }
+    e.target.value = '';
+  });
+
+  document.getElementById('btn-reset-layout').addEventListener('click', () => {
+    localStorage.removeItem(STORAGE_KEY);
+    state = createDefaultState();
+    applyFullDesignPayload(state);
+    setBuildingContextVisible(state.showBuilding);
+    setCurtainsVisible(state.showCurtains);
+    manipulator.select(null);
+    setSelection(null);
+    setToolMode('navigate', { silent: true });
+    undoMgr.snapshot(state);
+    showToast('Reset apartment to defaults');
+  });
+
+  // ---- GLOBAL KEYBOARD SHORTCUTS ----
   window.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    const key = e.key.toLowerCase();
+
+    if ((e.ctrlKey || e.metaKey) && key === 'z') {
       e.preventDefault();
       if (e.shiftKey) redo(); else undo();
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    } else if ((e.ctrlKey || e.metaKey) && key === 'y') {
       e.preventDefault();
       redo();
-    } else if (e.key.toLowerCase() === 'r' && manipulator.selectedUid) {
+    } else if (!e.ctrlKey && !e.metaKey && !e.altKey && ['1', '2', '3', '4', '5'].includes(e.key)) {
+      const map = { '1': 'navigate', '2': 'arrange', '3': 'paint', '4': 'measure', '5': 'studio' };
+      setToolMode(map[e.key]);
+    } else if (key === 'm') {
+      setToolMode(state.toolMode === 'measure' ? 'navigate' : 'measure');
+    } else if (key === 'r' && manipulator.selectedUid) {
       e.preventDefault();
       rotateSelected(e.shiftKey ? Math.PI / 12 : Math.PI / 2);
-    } else if (e.key.toLowerCase() === 'g') {
+    } else if (key === 'g') {
       document.getElementById('btn-snap').click();
-    } else if (e.key.toLowerCase() === 'm') {
-      toggleMeasure();
+    } else if (e.key === '?') {
+      shortcutsModal.classList.toggle('hidden');
     } else if (e.key === 'Escape') {
-      if (tapeMeasure.active) toggleMeasure();
-      else manipulator.select(null);
+      if (!shortcutsModal.classList.contains('hidden')) {
+        shortcutsModal.classList.add('hidden');
+      } else if (currentSelection) {
+        manipulator.select(null);
+        setSelection(null);
+      } else if (state.openDrawer) {
+        state.openDrawer = null;
+        renderLeftRailAndDrawer(state);
+      } else if (state.toolMode !== 'navigate') {
+        setToolMode('navigate');
+      }
     } else if ((e.key === 'Delete' || e.key === 'Backspace') && manipulator.selectedUid) {
-      document.getElementById('sel-del').click();
+      deleteSelected();
     } else if (e.code === 'Space' && state.kitchen.comboA) {
       e.preventDefault();
       swapKitchenAB();
@@ -1566,7 +1866,7 @@ function bindEvents() {
 }
 
 /* =========================================================================
- * 7. ON-DEMAND ANIMATION LOOP (0% IDLE GPU USAGE!) & BOOT
+ * 8. ON-DEMAND ANIMATION LOOP (0% IDLE GPU USAGE!) & BOOT
  * ========================================================================= */
 function animate(now) {
   requestAnimationFrame(animate);
@@ -1628,7 +1928,8 @@ function animate(now) {
 async function boot() {
   initThree();
   undoMgr.snapshot(state);
-  renderAllPanels(state, lastDiagnostics);
+  renderAllPanels(state, lastDiagnostics, getDockExtra());
+  refreshInspector();
   bindEvents();
   requestRender();
   requestAnimationFrame(animate);
