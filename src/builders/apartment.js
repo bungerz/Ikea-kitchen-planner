@@ -4,8 +4,9 @@ import {
   getTaupeTileTextures,
   getOakLaminateTextures,
   getLoggiaTileTextures,
-  getBathroomTileTexture,
-  getWoodTexture,
+  getBathroomTileTextures,
+  getWoodPbrTextures,
+  getWallPlasterNormalMap,
   getArtworkTexture
 } from './textures.js';
 
@@ -40,11 +41,9 @@ function addWallWithOpenings(parent, { axis, fixedCoord, start, end, thickness, 
     }
     const opLen = op.e - op.s;
     const opMid = (op.s + op.e) / 2;
-    // Below opening (sill)
     if (op.y0 > 0.005) {
       makeBox(opLen, op.y0, opMid, op.y0 / 2);
     }
-    // Above opening (lintel)
     if (op.y1 < height - 0.005) {
       const lintelH = height - op.y1;
       makeBox(opLen, lintelH, opMid, op.y1 + lintelH / 2);
@@ -57,19 +56,19 @@ function addWallWithOpenings(parent, { axis, fixedCoord, start, end, thickness, 
 }
 
 /**
- * Helper: builds an interior painted wall lining (thin 4 mm panel) with openings
+ * Helper: builds an interior painted wall lining with openings
  * so each room & its accent wall can be painted independently in Dulux Valentine colors!
  */
 function addPaintedLining(parent, { roomId, side, isAccent = false, axis, faceCoord, normalSign, start, end, height = H, openings = [], materials }) {
   const mat = isAccent ? materials[roomId].accent : materials[roomId].main;
   const sorted = [...openings].sort((a, b) => a.s - b.s);
-  const offset = faceCoord + normalSign * 0.004;
+  const offset = faceCoord + normalSign * 0.0025;
 
   const makePanel = (len, h, centerAlong, centerY) => {
     if (len <= 0.005 || h <= 0.005) return;
     const geo = axis === 'x'
-      ? new THREE.BoxGeometry(len, h, 0.004)
-      : new THREE.BoxGeometry(0.004, h, len);
+      ? new THREE.BoxGeometry(len, h, 0.003)
+      : new THREE.BoxGeometry(0.003, h, len);
     const mesh = new THREE.Mesh(geo, mat);
     if (axis === 'x') {
       mesh.position.set(centerAlong, centerY, offset);
@@ -77,7 +76,7 @@ function addPaintedLining(parent, { roomId, side, isAccent = false, axis, faceCo
       mesh.position.set(offset, centerY, centerAlong);
     }
     mesh.receiveShadow = true;
-    mesh.userData = { paintRoom: roomId, paintSide: side, isAccent };
+    mesh.userData = { paintRoom: roomId, paintSide: side, isAccent, clickableWall: true };
     parent.add(mesh);
   };
 
@@ -100,30 +99,31 @@ function addPaintedLining(parent, { roomId, side, isAccent = false, axis, faceCo
 }
 
 /**
- * Helper: realistic double-glazed architectural window frame + sill + glass
+ * Helper: realistic double-glazed architectural window frame + sill + roller-shutter box + handle + glass
  */
-function addWindowUnit(parent, { axis, coord, s, e, y0, y1, depth = 0.24 }) {
+function addWindowUnit(parent, { axis, coord, s, e, y0, y1, depth = 0.24, interiorSign = 1 }) {
   const len = e - s;
   const h = y1 - y0;
   const mid = (s + e) / 2;
   const midY = (y0 + y1) / 2;
   const group = new THREE.Group();
 
-  const frameMat = new THREE.MeshStandardMaterial({ color: '#F2F2EF', roughness: 0.42, metalness: 0.08 });
-  const extFrameMat = new THREE.MeshStandardMaterial({ color: '#4B4D50', roughness: 0.45, metalness: 0.35 });
+  const frameMat = new THREE.MeshStandardMaterial({ color: '#F2F2EF', roughness: 0.38, metalness: 0.08 });
+  const extFrameMat = new THREE.MeshStandardMaterial({ color: '#4B4D50', roughness: 0.42, metalness: 0.38 });
+  const handleMat = new THREE.MeshStandardMaterial({ color: '#D4D7DB', roughness: 0.22, metalness: 0.88 });
+  const vrBoxMat = new THREE.MeshStandardMaterial({ color: '#F5F4F0', roughness: 0.72, metalness: 0.0 });
   const glassMat = new THREE.MeshPhysicalMaterial({
     color: '#DFF0F8',
-    roughness: 0.06,
+    roughness: 0.04,
     metalness: 0.0,
-    transmission: 0.78,
+    transmission: 0.82,
     transparent: true,
-    opacity: 0.32,
+    opacity: 0.28,
     ior: 1.5
   });
 
   const frameT = 0.055;
   const frameD = 0.08;
-  // Outer surround (4 bars)
   const addBar = (bx, by, bz, px, py, pz, mat = frameMat) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(bx, by, bz), mat);
     m.position.set(px, py, pz);
@@ -131,31 +131,33 @@ function addWindowUnit(parent, { axis, coord, s, e, y0, y1, depth = 0.24 }) {
   };
 
   if (axis === 'x') {
-    // Wall runs along X (South window)
     addBar(len, frameT, frameD, 0, h / 2 - frameT / 2, 0);
     addBar(len, frameT, frameD, 0, -h / 2 + frameT / 2, 0);
     addBar(frameT, h, frameD, -len / 2 + frameT / 2, 0, 0);
     addBar(frameT, h, frameD, len / 2 - frameT / 2, 0, 0);
-    // Center mullion if wide
-    if (len >= 1.15) addBar(0.045, h - frameT * 2, frameD * 0.85, 0, 0, 0);
-    // Interior sill
+    if (len >= 1.15) {
+      addBar(0.045, h - frameT * 2, frameD * 0.85, 0, 0, 0);
+      addBar(0.018, 0.11, 0.035, 0.015, -0.05, interiorSign * (frameD / 2 + 0.02), handleMat);
+    }
     addBar(len + 0.04, 0.025, depth + 0.02, 0, -h / 2 - 0.012, 0, frameMat);
-    // Glass pane (tagged so GPU path tracer bypasses refractive MIS blocking!)
+    addBar(len + 0.06, 0.18, 0.14, 0, h / 2 + 0.10, interiorSign * (depth / 2 + 0.04), vrBoxMat);
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(len - frameT * 2, h - frameT * 2), glassMat);
     glass.material.side = THREE.DoubleSide;
     glass.userData.isWindowGlass = true;
     group.add(glass);
-    // Subtle dark exterior drip trim
-    addBar(len + 0.02, 0.02, 0.04, 0, h / 2 - 0.01, depth / 2 - 0.02, extFrameMat);
+    addBar(len + 0.02, 0.02, 0.04, 0, h / 2 - 0.01, -interiorSign * (depth / 2 - 0.02), extFrameMat);
     group.position.set(mid, midY, coord);
   } else {
-    // Wall runs along Z (West window)
     addBar(frameD, frameT, len, 0, h / 2 - frameT / 2, 0);
     addBar(frameD, frameT, len, 0, -h / 2 + frameT / 2, 0);
     addBar(frameD, h, frameT, 0, 0, -len / 2 + frameT / 2);
     addBar(frameD, h, frameT, 0, 0, len / 2 - frameT / 2);
-    if (len >= 1.15) addBar(frameD * 0.85, h - frameT * 2, 0.045, 0, 0, 0);
+    if (len >= 1.15) {
+      addBar(frameD * 0.85, h - frameT * 2, 0.045, 0, 0, 0);
+      addBar(0.035, 0.11, 0.018, interiorSign * (frameD / 2 + 0.02), -0.05, 0.015, handleMat);
+    }
     addBar(depth + 0.02, 0.025, len + 0.04, 0, -h / 2 - 0.012, 0, frameMat);
+    addBar(0.14, 0.18, len + 0.06, interiorSign * (depth / 2 + 0.04), h / 2 + 0.10, 0, vrBoxMat);
     const glass = new THREE.Mesh(new THREE.PlaneGeometry(len - frameT * 2, h - frameT * 2), glassMat);
     glass.rotation.y = Math.PI / 2;
     glass.material.side = THREE.DoubleSide;

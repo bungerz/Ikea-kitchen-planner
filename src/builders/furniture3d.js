@@ -208,19 +208,16 @@ export function buildIkeaBed(item) {
   const throwMat = makeFabricMat('#C4B5A3', 0.95, 5);
   const pillowMat = makeFabricMat('#FAF8F5', 0.90, 2);
 
-  // Mattress
-  addBox(g, matW, matH, matL, sheetMat, 0, matY, 0.02);
-  // Plush Duvet covering lower 72% of bed
-  addBox(g, matW + 0.06, 0.10, matL * 0.72, duvetMat, 0, matY + matH / 2 + 0.02, 0.28);
-  // Folded Linen Throw across the foot
-  addBox(g, matW + 0.08, 0.045, 0.50, throwMat, 0, matY + matH / 2 + 0.06, 0.70);
+  // Mattress, Plush Duvet, Folded Throw & Soft Rounded Pillows
+  addRoundedBox(g, matW, matH, matL, sheetMat, 0, matY, 0.02, 0.045);
+  addRoundedBox(g, matW + 0.06, 0.105, matL * 0.72, duvetMat, 0, matY + matH / 2 + 0.02, 0.28, 0.042);
+  addRoundedBox(g, matW + 0.08, 0.045, 0.50, throwMat, 0, matY + matH / 2 + 0.06, 0.70, 0.018);
 
-  // 4 Layered Pillows against headboard
   const pilY = matY + matH / 2 + 0.08;
   for (const px of [-0.40, 0.40]) {
-    const pBack = addBox(g, 0.68, 0.16, 0.36, pillowMat, px, pilY, -0.66);
+    const pBack = addRoundedBox(g, 0.68, 0.16, 0.36, pillowMat, px, pilY, -0.66, 0.065);
     pBack.rotation.x = 0.28;
-    const pFront = addBox(g, 0.56, 0.14, 0.28, throwMat, px, pilY - 0.01, -0.44);
+    const pFront = addRoundedBox(g, 0.56, 0.14, 0.28, throwMat, px, pilY - 0.01, -0.44, 0.055);
     pFront.rotation.x = 0.36;
   }
 
@@ -257,18 +254,13 @@ export function buildIkeaSofa(item) {
   const legH = def.style === 'low-modular' || def.style === 'slim-architectural' || def.style === 'midcentury-tufted' ? 0.15 : 0.06;
   const baseThick = seatH - legH - 0.14;
 
-  // Main sofa chassis
-  addBox(g, W, baseThick, D, fabMat, 0, legH + baseThick / 2, 0);
+  addRoundedBox(g, W, baseThick, D, fabMat, 0, legH + baseThick / 2, 0, 0.02);
+  addRoundedBox(g, W, H - legH - 0.06, 0.18, fabMat, 0, legH + (H - legH - 0.06) / 2, -D / 2 + 0.09, 0.035);
 
-  // Backrest frame
-  addBox(g, W, H - legH - 0.06, 0.18, fabMat, 0, legH + (H - legH - 0.06) / 2, -D / 2 + 0.09);
-
-  // Armrests (Left & Right)
   const armH = def.style === 'wide-arm' ? 0.54 : def.style === 'low-modular' ? 0.56 : 0.62;
-  addBox(g, armW, armH - legH, D - 0.04, fabMat, -W / 2 + armW / 2, legH + (armH - legH) / 2, 0.02);
-  addBox(g, armW, armH - legH, D - 0.04, fabMat, W / 2 - armW / 2, legH + (armH - legH) / 2, 0.02);
+  addRoundedBox(g, armW, armH - legH, D - 0.04, fabMat, -W / 2 + armW / 2, legH + (armH - legH) / 2, 0.02, 0.032);
+  addRoundedBox(g, armW, armH - legH, D - 0.04, fabMat, W / 2 - armW / 2, legH + (armH - legH) / 2, 0.02, 0.032);
 
-  // Seat & Back Cushions (3 modular cushions across width)
   const innerW = W - armW * 2 - 0.04;
   const segCount = W >= 2.35 ? 3 : 2;
   const segW = innerW / segCount;
@@ -279,25 +271,19 @@ export function buildIkeaSofa(item) {
     const cZ = isChaiseSeg ? ((def.chaiseD - D) / 2 + 0.04) : 0.07;
 
     if (isChaiseSeg) {
-      // Extended chaise deck
-      addBox(g, segW + 0.04, baseThick, def.chaiseD - D, fabMat, cx, legH + baseThick / 2, D / 2 + (def.chaiseD - D) / 2);
+      addRoundedBox(g, segW + 0.04, baseThick, def.chaiseD - D, fabMat, cx, legH + baseThick / 2, D / 2 + (def.chaiseD - D) / 2, 0.02);
     }
 
-    // Seat cushion
-    addBox(g, segW - 0.025, 0.15, cDepth, fabMat, cx, seatH - 0.075, cZ);
-
-    // Back cushion (tilted comfortably)
-    const backC = addBox(g, segW - 0.04, H - seatH + 0.08, 0.18, fabMat, cx, seatH + (H - seatH) / 2, -D / 2 + 0.25);
+    addRoundedBox(g, segW - 0.025, 0.155, cDepth, fabMat, cx, seatH - 0.075, cZ, 0.045);
+    const backC = addRoundedBox(g, segW - 0.04, H - seatH + 0.08, 0.18, fabMat, cx, seatH + (H - seatH) / 2, -D / 2 + 0.25, 0.055);
     backC.rotation.x = -0.16;
   }
 
-  // Decorative Throw Pillows
-  const p1 = addBox(g, 0.42, 0.40, 0.14, accentPillowMat, -innerW / 2 + 0.24, seatH + 0.18, -D / 2 + 0.36);
+  const p1 = addRoundedBox(g, 0.42, 0.40, 0.14, accentPillowMat, -innerW / 2 + 0.24, seatH + 0.18, -D / 2 + 0.36, 0.055);
   p1.rotation.set(-0.22, 0.25, 0.08);
-  const p2 = addBox(g, 0.42, 0.40, 0.14, accentPillowMat, innerW / 2 - 0.24, seatH + 0.18, -D / 2 + 0.36);
+  const p2 = addRoundedBox(g, 0.42, 0.40, 0.14, accentPillowMat, innerW / 2 - 0.24, seatH + 0.18, -D / 2 + 0.36, 0.055);
   p2.rotation.set(-0.22, -0.25, -0.08);
 
-  // Legs
   const legPositions = [
     [-W / 2 + 0.10, -D / 2 + 0.10],
     [ W / 2 - 0.10, -D / 2 + 0.10],
@@ -339,7 +325,6 @@ export function buildMobiliFiverTable(item) {
   const topT = 0.042;
   const topY = H - topT / 2;
 
-  // ---- Tabletop (Rectangular or Round-to-Oval for Angelica!) ----
   if (def.shape === 'round') {
     const r = W / 2;
     if (extIdx === 0) {
@@ -348,24 +333,20 @@ export function buildMobiliFiverTable(item) {
       top.castShadow = true; top.receiveShadow = true;
       g.add(top);
     } else {
-      // Stadium / Oval tabletop (two semicircles + center extension leaf!)
       const leafL = L - W;
-      addBox(g, leafL, topT, W, woodMat, 0, topY, 0);
+      addRoundedBox(g, leafL, topT, W, woodMat, 0, topY, 0, 0.008);
       const endL = new THREE.Mesh(new THREE.CylinderGeometry(r, r, topT, 32), woodMat);
       endL.position.set(-leafL / 2, topY, 0);
       endL.castShadow = true; endL.receiveShadow = true;
       const endR = endL.clone();
       endR.position.x = leafL / 2;
       g.add(endL, endR);
-      // Extension leaf seam lines
       addBox(g, 0.004, topT + 0.002, W - 0.02, seamMat, -leafL / 2, topY, 0, false);
       addBox(g, 0.004, topT + 0.002, W - 0.02, seamMat, leafL / 2, topY, 0, false);
     }
   } else {
-    addBox(g, L, topT, W, woodMat, 0, topY, 0);
-    // Subtle skirt apron underneath
+    addRoundedBox(g, L, topT, W, woodMat, 0, topY, 0, 0.008);
     addBox(g, L - 0.14, 0.055, W - 0.14, darkWoodMat, 0, topY - 0.045, 0);
-    // Visible telescopic extension leaf seams when extended!
     if (extIdx > 0) {
       const leafCount = extIdx;
       const leafSpan = (L - def.lengths[0]) / leafCount;
@@ -376,25 +357,21 @@ export function buildMobiliFiverTable(item) {
     }
   }
 
-  // ---- Iconic Mobili Fiver Legs per Model ----
   const legH = H - topT;
   if (def.style === 'emma-x-legs') {
-    // Signature Mobili Fiver EMMA intersecting sculptural crossed legs!
     const xMat = finishKey === 'walnut' ? woodMat : blackSteel;
     for (const [angZ, angY] of [[0.42, 0.28], [-0.42, -0.28], [0.42, -0.28], [-0.42, 0.28]]) {
-      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.11, legH * 1.18, 0.09), xMat);
+      const strut = new THREE.Mesh(new RoundedBoxGeometry(0.11, legH * 1.18, 0.09, 2, 0.006), xMat);
       strut.position.set(0, legH / 2, 0);
       strut.rotation.set(angY, 0, angZ);
       strut.castShadow = true;
       g.add(strut);
     }
-    // Central architectural base plate
-    addBox(g, 0.72, 0.025, 0.44, blackSteel, 0, 0.0125, 0);
+    addRoundedBox(g, 0.72, 0.025, 0.44, blackSteel, 0, 0.0125, 0, 0.006);
   } else if (def.style === 'round-oval') {
-    // ANGELICA star pedestal base
     for (let i = 0; i < 4; i++) {
       const a = (i * Math.PI) / 2 + Math.PI / 4;
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.09, legH * 1.12, 0.09), woodMat);
+      const leg = new THREE.Mesh(new RoundedBoxGeometry(0.09, legH * 1.12, 0.09, 2, 0.006), woodMat);
       leg.position.set(Math.cos(a) * 0.16, legH / 2, Math.sin(a) * 0.16);
       leg.rotation.z = Math.cos(a) * 0.24;
       leg.rotation.x = -Math.sin(a) * 0.24;
@@ -402,10 +379,9 @@ export function buildMobiliFiverTable(item) {
       g.add(leg);
     }
   } else if (def.style === 'evolution-angled') {
-    // EVOLUTION bold angled outward legs
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.095, legH * 1.04, 0.095), woodMat);
+        const leg = new THREE.Mesh(new RoundedBoxGeometry(0.095, legH * 1.04, 0.095, 2, 0.006), woodMat);
         leg.position.set(sx * (L / 2 - 0.14), legH / 2, sz * (W / 2 - 0.11));
         leg.rotation.z = -sx * 0.09;
         leg.castShadow = true;
@@ -413,22 +389,19 @@ export function buildMobiliFiverTable(item) {
       }
     }
   } else {
-    // FIRST / EASY / RACHELE crisp 4 corner legs (expand smoothly with table!)
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        addBox(g, 0.085, legH, 0.085, woodMat, sx * (L / 2 - 0.07), legH / 2, sz * (W / 2 - 0.07));
+        addRoundedBox(g, 0.085, legH, 0.085, woodMat, sx * (L / 2 - 0.07), legH / 2, sz * (W / 2 - 0.07), 0.006);
       }
     }
   }
 
-  // ---- Dynamic Scandinavian Walnut/Linen Dining Chairs (4 -> 6 -> 8 chairs!) ----
   const chairPerSide = L >= 2.25 ? 3 : L >= 1.55 ? 2 : 2;
   const chairWood = makeWoodMat(finishKey === 'concrete' ? 'oak' : finishKey, 1, 1);
   const chairSeat = makeFabricMat('#E2D9CB', 0.90, 2);
 
   const addChair = (cx, cz, rotY) => {
     const cg = new THREE.Group();
-    // 4 slender legs
     for (const lx of [-0.18, 0.18]) {
       for (const lz of [-0.18, 0.18]) {
         const l = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.012, 0.45, 8), chairWood);
@@ -437,10 +410,8 @@ export function buildMobiliFiverTable(item) {
         cg.add(l);
       }
     }
-    // Upholstered seat
-    addBox(cg, 0.44, 0.045, 0.42, chairSeat, 0, 0.46, 0);
-    // Curved Scandinavian wooden backrest
-    addBox(cg, 0.44, 0.20, 0.035, chairWood, 0, 0.72, -0.19);
+    addRoundedBox(cg, 0.44, 0.05, 0.42, chairSeat, 0, 0.46, 0, 0.018);
+    addRoundedBox(cg, 0.44, 0.20, 0.036, chairWood, 0, 0.72, -0.19, 0.01);
     addBox(cg, 0.032, 0.36, 0.032, chairWood, -0.18, 0.62, -0.19);
     addBox(cg, 0.032, 0.36, 0.032, chairWood,  0.18, 0.62, -0.19);
     cg.position.set(cx, 0, cz);
@@ -683,9 +654,10 @@ export function buildFurnitureItemMesh(item) {
   else if (item.kind === 'customGlb') group = buildGlbItemMesh(item);
   else group = buildGenericFurniture(item);
 
-  group.position.set(item.x, 0, item.z);
+  group.position.set(item.x, item.y || 0, item.z);
   group.rotation.y = item.rotY || 0;
   group.userData.uid = item.uid;
+  group.userData.kind = item.kind;
   group.userData.movable = true;
   group.name = `movable-${item.uid}`;
   return group;
@@ -695,7 +667,7 @@ export function buildFurnitureItemMesh(item) {
  * 6. TMA LIGHT FIXTURES BUILDER (CEILING DCLs + CH.3 WALL SCONCES!)
  * ========================================================================= */
 export function buildLightFixtures(parentGroup, roomFixtureStyles, lightingMode) {
-  while (parentGroup.children.length) parentGroup.remove(parentGroup.children[0]);
+  clearGroupAndDispose(parentGroup);
 
   const isEvening = lightingMode === 'evening';
   const bulbEmissiveIntensity = isEvening ? 2.4 : lightingMode === 'morning' ? 0.55 : 0.35;

@@ -1627,15 +1627,19 @@ function animate(now) {
 
 async function boot() {
   initThree();
-  // Rehydrate any persisted .GLB models from IndexedDB seamlessly!
-  const hydrated = await hydrateGlbCache(state.items);
-  if (hydrated > 0) rebuildAllMovables();
-
   undoMgr.snapshot(state);
   renderAllPanels(state, lastDiagnostics);
   bindEvents();
   requestRender();
   requestAnimationFrame(animate);
+
+  // Rehydrate any persisted .GLB models from IndexedDB asynchronously after UI is interactive!
+  try {
+    const hydrated = await hydrateGlbCache(state.items);
+    if (hydrated > 0) rebuildAllMovables();
+  } catch (err) {
+    console.warn('IndexedDB GLB hydration skipped:', err);
+  }
 }
 
 boot();

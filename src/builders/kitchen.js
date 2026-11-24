@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { DOORS, COUNTERTOPS } from '../catalogs/materials.js';
-import { getCountertopTexture, getBacksplashTexture, getWoodTexture } from './textures.js';
+import { getCountertopPbrTextures, getBacksplashPbrTextures, getWoodPbrTextures } from './textures.js';
+import { clearGroupAndDispose } from '../core/dispose.js';
 
 /* =========================================================================
  * EXACT IKEA METOD U-KITCHEN BUILDER (PLACED IN SÉJOUR + CUISINE)
