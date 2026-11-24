@@ -13,6 +13,9 @@ export default defineConfig({
           if (id.includes('three-gpu-pathtracer') || id.includes('three-mesh-bvh')) {
             return 'pathtracer';
           }
+          if (id.includes('node_modules/denoiser') || id.includes('node_modules/@tensorflow')) {
+            return 'denoiser';
+          }
           if (id.includes('node_modules/n8ao')) {
             return 'postfx';
           }

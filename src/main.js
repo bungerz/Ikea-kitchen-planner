@@ -696,6 +696,23 @@ function notifyRayTracerMaterialChange() {
   if (rtActive && rayTracer) rayTracer.notifyMaterialsChanged();
 }
 
+async function renderAndSavePhoto() {
+  if (!rtActive || !rayTracer) return saveViewportPng();
+  const btn = document.getElementById('btn-rt-photo');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Rendering photo…'; }
+  showToast('Rendering high-res photo… keep the camera still');
+  try {
+    await rayTracer.renderPhoto();
+    saveViewportPng();
+  } catch (err) {
+    showToast(`Photo cancelled: ${err?.message || err}`);
+  } finally {
+    rayTracer.endPhoto();
+    if (btn) { btn.disabled = false; btn.textContent = '📸 Render & Save Photo'; }
+    requestRender();
+  }
+}
+
 function saveViewportPng() {
   const a = document.createElement('a');
   a.download = `cassiopee-ambilly-render-${Date.now()}.png`;
@@ -758,7 +775,7 @@ async function toggleRayTracing() {
   } catch (err) {
     console.error('Ray tracing init error:', err);
     renderModeDockAndSubbar(state, getDockExtra());
-    showToast('Ray tracing unavailable on this GPU');
+    showToast(`Ray tracing failed: ${err?.message || err}`);
   }
 }
 
@@ -770,7 +787,7 @@ function updateRtHudControls() {
       active ? 'bg-amber-400 text-amber-950' : 'bg-white/10 hover:bg-white/20 text-white'
     }`;
   });
-  const dLabels = { off: 'Off', subtle: 'Subtle', smooth: 'Smooth' };
+  const dLabels = { off: 'Off', ai: 'AI' };
   document.getElementById('btn-rt-denoise').textContent = `Denoise: ${dLabels[rayTracer.denoiseMode]}`;
   const lLabels = { auto: 'Auto', on: 'ON', off: 'OFF' };
   document.getElementById('btn-rt-lamps').textContent = `Lamps: ${lLabels[rayTracer.lampsMode]}`;
@@ -1296,7 +1313,7 @@ function bindEvents() {
       return;
     }
     if (e.target.closest('#sub-snap-png')) {
-      saveViewportPng();
+      if (rtActive) renderAndSavePhoto(); else saveViewportPng();
     }
   });
   subbar.addEventListener('input', (e) => {
@@ -1452,10 +1469,12 @@ function bindEvents() {
   });
   document.getElementById('btn-rt-denoise').addEventListener('click', () => {
     if (!rayTracer) return;
-    const modes = ['off', 'subtle', 'smooth'];
-    const next = modes[(modes.indexOf(rayTracer.denoiseMode) + 1) % modes.length];
-    rayTracer.setDenoiseMode(next);
+    rayTracer.setDenoiseMode(rayTracer.denoiseMode === 'ai' ? 'off' : 'ai');
+    requestRender();
     updateRtHudControls();
+  });
+  document.getElementById('btn-rt-photo').addEventListener('click', () => {
+    renderAndSavePhoto();
   });
   document.getElementById('btn-rt-lamps').addEventListener('click', () => {
     if (!rayTracer) return;
@@ -1899,7 +1918,7 @@ function animate(now) {
   }
 
   if (rtActive && rayTracer) {
-    if (!rayTracer.paused || needsRender) {
+    if (!rayTracer.paused || needsRender || rayTracer.hudDirty) {
       needsRender = false;
       const info = rayTracer.renderFrame();
       if (info && now - rtLastHudTs > 140) {
@@ -1910,11 +1929,18 @@ function animate(now) {
           ? 'Compiling…'
           : `${info.samples} / ${info.targetSamples}${rateStr}`;
         document.getElementById('rt-progress-bar').style.width = `${pct}%`;
+        const denoiseLabel = {
+          running: 'AI Denoising…',
+          done: `Clean Render Ready ✓ (AI ${Math.max(0.1, info.denoiseMs / 1000).toFixed(1)}s)`,
+          failed: 'Ready (AI denoise failed, raw)',
+          off: 'Render Ready ✓',
+          idle: 'AI Denoising…'
+        };
         document.getElementById('rt-status-text').textContent = info.isCompiling
           ? 'Compiling GPU Shader…'
           : info.converged
-            ? 'Studio Render Ready ✓'
-            : 'Path Tracing…';
+            ? denoiseLabel[info.denoiseState] || 'Render Ready ✓'
+            : (info.photo ? 'Rendering Photo…' : 'Path Tracing…');
       }
     }
     return;
