@@ -92,6 +92,9 @@ export function computeApartmentBudget(state) {
       const def = MOBILIFIVER_TABLES.find(t => t.id === item.modelId);
       detail = `${def?.name || item.modelId} · ${item.finish || ''}`;
     }
+    if (item.sourceUrl) {
+      detail = `${item.vendor || 'web'}${typeof item.priceEur === 'number' ? '' : ' · price not found (estimate)'}`;
+    }
     lines.push({
       category: 'Furniture',
       room: roomObj?.shortName || item.room || 'Apartment',
@@ -99,7 +102,8 @@ export function computeApartmentBudget(state) {
       detail,
       qty: 1,
       unitPriceEur: price,
-      totalEur: price
+      totalEur: price,
+      ...(item.sourceUrl ? { url: item.sourceUrl } : {})
     });
   }
 
@@ -192,7 +196,9 @@ export function computeApartmentBudget(state) {
 
   // 4. TMA Light Fixtures
   let lightsTotal = 0;
+  const replacedPoints = new Set((state.items || []).map(i => i.replacesLightPoint).filter(Boolean));
   for (const pt of TMA_LIGHT_POINTS) {
+    if (replacedPoints.has(pt.id)) continue; // replaced by an imported product (billed under Furniture)
     const styleId = (state.roomFixtures && state.roomFixtures[pt.room]) || pt.defaultStyle || 'scandi-linen';
     const fixDef = LIGHT_FIXTURES.find(f => f.id === styleId) || LIGHT_FIXTURES[0];
     const price = FIXTURE_UNIT_PRICE_EUR[styleId] || 75;

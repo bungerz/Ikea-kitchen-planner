@@ -241,5 +241,11 @@ export function renderContextualInspector(state, selection, clearance = null) {
     `;
   }
 
-  bodyEl.innerHTML = transformBar + `<div class="pt-2.5">${specificHtml}</div>`;
+  const sourceHtml = item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl)
+    ? `<div class="pt-2.5 flex items-center justify-between gap-2 text-[10.5px]">
+        <a href="${item.sourceUrl.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer" class="font-semibold text-studio-accent hover:underline truncate">🔗 ${item.vendor || 'Product page'} ↗</a>
+        <span class="font-mono shrink-0">${typeof item.priceEur === 'number' ? `${item.priceEur} €` : 'price n/a'}</span>
+      </div>`
+    : '';
+  bodyEl.innerHTML = transformBar + sourceHtml + `<div class="pt-2.5">${specificHtml}</div>`;
 }

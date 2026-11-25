@@ -479,7 +479,7 @@ export function renderPromptPanel(state) {
   const modInp = document.getElementById('ai-model');
   if (provSel) provSel.value = aiCfg.provider || 'local';
   if (keyInp && !keyInp.value && aiCfg.apiKey) keyInp.value = aiCfg.apiKey;
-  if (modInp && !modInp.value) modInp.value = aiCfg.model || 'gemini-2.5-flash';
+  if (modInp && !modInp.value) modInp.value = aiCfg.model || '';
 
   const examples = [
     'Arched brass floor mirror in ch3',

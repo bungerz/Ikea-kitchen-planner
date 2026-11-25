@@ -103,14 +103,21 @@ function createPartGeometry(part) {
 
   switch (part.shape) {
     case 'cylinder':
-      return new THREE.CylinderGeometry(sx / 2, (part.radiusBottom ? part.radiusBottom : sx / 2), sy, 24);
+      return new THREE.CylinderGeometry(sx / 2, (part.radiusBottom ? Number(part.radiusBottom) : sx / 2), sy, 32, 1, !!part.open);
+    case 'dome': {
+      // Open-bottom half sphere (lamp shades, cloches) centred on its own bounding box
+      const geo = new THREE.SphereGeometry(0.5, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+      geo.translate(0, -0.25, 0);
+      geo.scale(sx, sy * 2, sz);
+      return geo;
+    }
     case 'sphere': {
       const geo = new THREE.SphereGeometry(0.5, 20, 14);
       geo.scale(sx, sy, sz);
       return geo;
     }
     case 'cone':
-      return new THREE.ConeGeometry(sx / 2, sy, 20);
+      return new THREE.ConeGeometry(sx / 2, sy, 24, 1, !!part.open);
     case 'torus':
       return new THREE.TorusGeometry(sx / 2, Math.max(0.012, sz / 2), 12, 28, part.arc || Math.PI * 2);
     case 'arch': {
@@ -326,6 +333,7 @@ export function buildRichComponentMesh(item) {
     try {
       const geo = createPartGeometry(part);
       const mat = buildPbrMaterial(part.mat);
+      if (part.open || part.shape === 'dome') mat.side = THREE.DoubleSide;
       const mesh = new THREE.Mesh(geo, mat);
       const p = Array.isArray(part.pos) ? part.pos : [0, 0.5, 0];
       mesh.position.set(Number(p[0]) || 0, Number(p[1]) || 0, Number(p[2]) || 0);

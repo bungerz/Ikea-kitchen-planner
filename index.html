@@ -313,7 +313,7 @@
                 <span id="ai-mode-badge" class="text-[9.5px] font-mono px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300">Local CAD</span>
               </div>
               <form id="prompt-form" class="space-y-2">
-                <textarea id="prompt-input" rows="2" placeholder="e.g. Arched brass floor mirror in ch3, or 'make it 30cm wider'…"
+                <textarea id="prompt-input" rows="2" placeholder="e.g. Arched brass floor mirror in ch3 · 'make it 30cm wider' · or paste a product link + 'replace the dining pendant'…"
                   class="w-full rounded-xl bg-white/10 border border-white/20 px-2.5 py-2 text-xs text-white placeholder-white/45 focus:outline-none focus:border-amber-400 resize-none"></textarea>
                 <button id="btn-prompt-submit" type="submit" class="w-full py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 text-xs font-bold cursor-pointer">
                   ✨ Modelise & Apply
@@ -348,14 +348,16 @@
               <div class="mt-2 space-y-1.5 text-[10.5px]">
                 <select id="ai-provider" class="w-full rounded-lg studio-subtle px-2 py-1.5 text-[11px]">
                   <option value="local">Built-in Local CAD (Free)</option>
-                  <option value="gemini">Google Gemini (gemini-2.5-flash)</option>
+                  <option value="gemini">Google Gemini (reads product links)</option>
                   <option value="openai">OpenAI-Compatible</option>
                 </select>
                 <input id="ai-api-key" type="password" placeholder="Paste API key (localStorage only)" class="w-full rounded-lg studio-subtle px-2 py-1.5 text-[11px]" />
                 <div class="grid grid-cols-2 gap-1.5">
-                  <input id="ai-model" type="text" placeholder="gemini-2.5-flash" class="rounded-lg studio-subtle px-2 py-1.5 text-[11px]" />
-                  <button id="btn-ai-save" type="button" class="rounded-lg studio-btn-active font-bold text-[11px] cursor-pointer">Save</button>
+                  <input id="ai-model" type="text" list="ai-model-list" placeholder="auto (best Flash)" class="rounded-lg studio-subtle px-2 py-1.5 text-[11px]" />
+                  <datalist id="ai-model-list"></datalist>
+                  <button id="btn-ai-save" type="button" class="rounded-lg studio-btn-active font-bold text-[11px] cursor-pointer">Save &amp; Test</button>
                 </div>
+                <div id="ai-status" class="text-[10px] text-studio-muted">Key stays in this browser (localStorage) and is sent only to the provider.</div>
               </div>
             </details>
           </section>

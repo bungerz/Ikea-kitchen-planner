@@ -666,7 +666,7 @@ export function buildFurnitureItemMesh(item) {
 /* =========================================================================
  * 6. TMA LIGHT FIXTURES BUILDER (CEILING DCLs + CH.3 WALL SCONCES!)
  * ========================================================================= */
-export function buildLightFixtures(parentGroup, roomFixtureStyles, lightingMode) {
+export function buildLightFixtures(parentGroup, roomFixtureStyles, lightingMode, replacedPointIds = new Set()) {
   clearGroupAndDispose(parentGroup);
 
   const isEvening = lightingMode === 'evening';
@@ -685,6 +685,18 @@ export function buildLightFixtures(parentGroup, roomFixtureStyles, lightingMode)
     const style = roomFixtureStyles[pt.room] || pt.defaultStyle || 'scandi-linen';
     const g = new THREE.Group();
     g.position.set(pt.x, pt.y, pt.z);
+
+    if (replacedPointIds.has(pt.id)) {
+      // Stock fixture replaced by an imported product: keep only the evening light source.
+      if (isEvening) {
+        const pl = new THREE.PointLight(0xFFD699, pointLightIntensity, 6.2, 1.7);
+        pl.position.y = pt.kind === 'sconce' ? 0.04 : -0.55;
+        g.add(pl);
+        dynamicLights.push(pl);
+      }
+      parentGroup.add(g);
+      continue;
+    }
 
     if (pt.kind === 'sconce') {
       // Chambre 3 TMA #2 Wall Sconces on North wall (facing +Z)

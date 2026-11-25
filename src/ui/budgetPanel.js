@@ -69,7 +69,7 @@ export function renderBudgetPanel(state, diagnostics = null) {
           ${catLines.map(l => `
             <div class="flex items-start justify-between gap-2 text-[10.5px] border-t border-studio-border pt-1.5">
               <div class="min-w-0 leading-tight">
-                <div class="font-semibold truncate">${l.name}</div>
+                <div class="font-semibold truncate">${l.url ? `<a href="${escapeAttr(l.url)}" target="_blank" rel="noopener noreferrer" class="hover:underline">${l.name} ↗</a>` : l.name}</div>
                 <div class="text-[9.5px] text-studio-muted truncate">${l.room}${l.detail ? ` · ${l.detail}` : ''}</div>
               </div>
               <span class="font-mono shrink-0">${fmt(l.totalEur)}</span>
@@ -123,4 +123,8 @@ export function renderBudgetPanel(state, diagnostics = null) {
       a.click();
     };
   }
+}
+
+function escapeAttr(v) {
+  return String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }

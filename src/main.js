@@ -26,6 +26,12 @@ import {
   saveAiConfig
 } from './promptStudio.js';
 import {
+  findUrl,
+  applyImportPlacement,
+  getReplacedLightPointIds,
+  listGeminiModels
+} from './productImport.js';
+import {
   computeAmbillySun,
   formatHour,
   compassLabel
@@ -471,7 +477,7 @@ function rebuildSingleMovable(uid) {
 }
 
 function rebuildLights() {
-  dynamicFixtureLights = buildLightFixtures(fixturesGroup, state.roomFixtures, state.lightingMode);
+  dynamicFixtureLights = buildLightFixtures(fixturesGroup, state.roomFixtures, state.lightingMode, getReplacedLightPointIds(state.items));
   requestRender();
 }
 
@@ -849,6 +855,7 @@ function deleteSelected() {
     manipulator.select(null);
     setSelection(null);
     rebuildAllMovables();
+    if (removed.replacesLightPoint) rebuildLights();
     undoMgr.snapshot(state);
     saveState(state);
     refreshOverlaysAndDiagnostics();
@@ -913,12 +920,14 @@ async function executePrompt(text) {
 
   if (submitBtn) {
     submitBtn.disabled = true;
-    submitBtn.textContent = aiConfig.provider !== 'local' && aiConfig.apiKey ? '✨ LLM Modelising 3D…' : '✨ Modelising…';
+    submitBtn.textContent = findUrl(text)
+      ? '🔗 Reading product page…'
+      : aiConfig.provider !== 'local' && aiConfig.apiKey ? '✨ LLM Modelising 3D…' : '✨ Modelising…';
   }
 
   let res;
   try {
-    res = await interpretPromptAsync(text, { activeRoom: getAddTargetRoom(state), selectedItem, aiConfig });
+    res = await interpretPromptAsync(text, { activeRoom: getAddTargetRoom(state), selectedItem, aiConfig, state });
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -930,7 +939,8 @@ async function executePrompt(text) {
     fb.textContent = res.message;
     fb.classList.remove('hidden');
   }
-  if (res.type === 'noop') {
+  if (fb) fb.classList.toggle('text-red-300', res.type === 'error');
+  if (res.type === 'noop' || res.type === 'error') {
     showToast(res.message);
     return;
   }
@@ -998,6 +1008,18 @@ async function executePrompt(text) {
     state.kitchen.doorId = res.doorId;
     kitchenBuilder.applyDoor(res.doorId);
     flyToView('kitchen');
+    notifyRayTracerGeometryChange();
+  } else if (res.type === 'importProduct') {
+    const { item, removed } = applyImportPlacement(state, res, findFreeSpotInRoom);
+    state.customLibrary.unshift({
+      label: item.label, promptSource: item.promptSource, spec: item.spec, w: item.w, d: item.d, h: item.h,
+      priceEur: item.priceEur, sourceUrl: item.sourceUrl, vendor: item.vendor, mount: item.mount
+    });
+    if (removed.length) rebuildAllMovables();
+    else rebuildSingleMovable(item.uid);
+    rebuildLights();
+    manipulator.select(item.uid);
+    flyToView(item.room);
     notifyRayTracerGeometryChange();
   } else if (res.type === 'spawnComponent') {
     const spot = findFreeSpotInRoom(res.item.room, res.item.w, res.item.d);
@@ -1758,12 +1780,36 @@ function bindEvents() {
     e.target.value = '';
   });
 
-  document.getElementById('btn-ai-save').addEventListener('click', () => {
+  document.getElementById('btn-ai-save').addEventListener('click', async () => {
+    const statusEl = document.getElementById('ai-status');
+    const setStatus = (msg, ok) => {
+      if (!statusEl) return;
+      statusEl.textContent = msg;
+      statusEl.className = `text-[10px] ${ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`;
+    };
     const cfg = {
       provider: document.getElementById('ai-provider').value,
       apiKey: document.getElementById('ai-api-key').value.trim(),
-      model: document.getElementById('ai-model').value.trim() || 'gemini-2.5-flash'
+      model: document.getElementById('ai-model').value.trim()
     };
+    if (cfg.provider === 'gemini') {
+      if (!cfg.apiKey) { setStatus('Paste a Gemini API key first.', false); return; }
+      setStatus('Checking key…', true);
+      try {
+        const models = await listGeminiModels(cfg.apiKey);
+        const dl = document.getElementById('ai-model-list');
+        if (dl) dl.innerHTML = models.map(m => `<option value="${m}"></option>`).join('');
+        if (!cfg.model || !models.includes(cfg.model)) {
+          if (cfg.model) showToast(`Model "${cfg.model}" not available — using ${models[0]}`);
+          cfg.model = models[0] || '';
+          document.getElementById('ai-model').value = cfg.model;
+        }
+        setStatus(`✓ Key OK · ${models.length} models · using ${cfg.model}`, true);
+      } catch (err) {
+        setStatus(`✗ ${err.message}`, false);
+        return;
+      }
+    }
     saveAiConfig(cfg);
     renderPromptPanel(state);
     showToast(cfg.provider === 'local' ? 'Using Built-in Designer Modeliser' : `Saved ${cfg.provider.toUpperCase()} Live 3D Engine`);
@@ -1789,6 +1835,11 @@ function bindEvents() {
         x: spot.x, z: spot.z, rotY: spot.rotY || 0,
         spec: tpl.spec
       };
+      if (typeof tpl.priceEur === 'number') item.priceEur = tpl.priceEur;
+      if (tpl.sourceUrl) { item.sourceUrl = tpl.sourceUrl; item.vendor = tpl.vendor; }
+      if (tpl.mount) item.mount = tpl.mount;
+      if (tpl.mount === 'ceiling') item.y = Math.max(0, 2.5 - tpl.h);
+      else if (tpl.mount === 'wall') item.y = Math.max(0, 1.55 - tpl.h / 2);
       state.items.push(item);
       rebuildSingleMovable(item.uid);
       manipulator.select(item.uid);

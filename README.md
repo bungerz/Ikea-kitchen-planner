@@ -23,7 +23,8 @@ Interactive full-apartment 3D interior planner modeled to the centimeter from th
 - **✨ Phase 2 Prompt 3D Studio (The Grail)**:
   - Declarative multi-part 3D CAD schema (`parts[]`) with 12 built-in designer recipes (fluted walnut sideboard, arched brass mirror, curved bouclé chair, designer bookcase, marble coffee table, backlit vanity, kitchen bar stools, arc lamp, wine cabinet, etc.).
   - **Iterative Prompt Editing** on any selected piece (*"make it 30cm wider"*, *"change legs to brass"*, *"switch to walnut"*).
-  - **Custom `.GLB / .GLTF` 3D Model Importer** + optional **Live LLM 3D Engine (Gemini 2.5 Flash / OpenAI BYOK)** stored locally in your browser.
+  - **Custom `.GLB / .GLTF` 3D Model Importer** + optional **Live LLM 3D Engine (Gemini / OpenAI BYOK)** stored locally in your browser.
+  - **Product-link import (Gemini)**: paste a shop URL plus an instruction, e.g. `https://www.maisonsdumonde.com/…-246899.htm replace the pendant above the dining table` or `… add it in chambre 2`. Gemini reads the page (price, dimensions, materials), builds a multi-part 3D model, and places it: it replaces the named item or ceiling light, or adds the product to the named room. The real price goes into the Budget with a link back to the product page. **Save & Test** checks the key and lists the models it can use.
 
 ## Local Development
 

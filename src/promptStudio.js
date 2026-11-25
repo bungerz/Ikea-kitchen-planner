@@ -1,12 +1,20 @@
 import { DULUX_PAINTS, DOORS, WOOD_FINISHES, SOFA_FABRICS } from './catalogs/materials.js';
 import { IKEA_BEDS, IKEA_SOFAS, MOBILIFIVER_TABLES, ROOMS } from './catalogs/furniture.js';
 import { buildRecipeParts } from './builders/richComponent3d.js';
+import {
+  PARTS_SCHEMA_PROMPT,
+  callGemini,
+  extractJson,
+  findUrl,
+  importProductFromUrl,
+  resolveGeminiModel
+} from './productImport.js';
 
 /* =========================================================================
  * PHASE 2 PROMPT COMPONENT STUDIO (THE GRAIL!)
  * 1) Live Selected-Component Iterative Prompt Editing ("make it 20cm wider", "walnut", "brass legs")
  * 2) 12 Rich Multi-Part Designer 3D Recipes (Schema v2 `parts[]`, zero API key!)
- * 3) Optional Live LLM Modeliser (Gemini 2.5 Flash / OpenAI-compatible BYOK)
+ * 3) Optional Live LLM Modeliser (Gemini / OpenAI-compatible BYOK) + product-link import
  *    that generates arbitrary multi-part 3D furniture JSON from any prompt!
  * 4) Natural Room, Paint, Bed, Sofa, Table, Kitchen & Ambilly Sun commands.
  * ========================================================================= */
@@ -18,7 +26,7 @@ export function loadAiConfig() {
     const raw = localStorage.getItem(AI_CFG_KEY);
     if (raw) return JSON.parse(raw);
   } catch (_) {}
-  return { provider: 'local', apiKey: '', model: 'gemini-2.5-flash', endpoint: '' };
+  return { provider: 'local', apiKey: '', model: '', endpoint: '' };
 }
 
 export function saveAiConfig(cfg) {
@@ -181,32 +189,12 @@ function tryEditSelectedPrompt(t, selectedItem) {
 }
 
 /**
- * LIVE LLM MODELISER (Gemini 2.5 Flash / OpenAI-compatible BYOK)
+ * LIVE LLM MODELISER (Gemini / OpenAI-compatible BYOK)
  * Generates a rich multi-part Schema v2 JSON 3D model directly from any natural prompt!
  */
 const LLM_SYSTEM_PROMPT = `You are a 3D interior furniture CAD modeliser for Three.js.
-Return ONLY valid JSON (no markdown fences) describing a realistic multi-part piece of furniture centered at X=0, Z=0 with bottom resting on Y=0 (units in meters).
-JSON schema:
-{
-  "name": "Short descriptive name",
-  "w": 1.2,
-  "d": 0.5,
-  "h": 0.8,
-  "parts": [
-    {
-      "shape": "box" | "cylinder" | "sphere" | "torus" | "cone" | "arch",
-      "pos": [x, y, z],
-      "size": [sx, sy, sz],
-      "rot": [rx, ry, rz],
-      "mat": {
-        "type": "wood" | "fabric" | "metal" | "marble" | "glass" | "mirror" | "emissive" | "matte",
-        "finish": "walnut" | "oak" | "birch" | "white" | "blackAsh",
-        "color": "#HEX"
-      }
-    }
-  ]
-}
-Use 8 to 36 well-proportioned parts (legs, frame, top, cushions, fluted slats, handles, subtle decor). Keep all dimensions realistic (0.2m to 3.0m) and every part's bottom >= 0.`;
+Return ONLY valid JSON (no markdown fences) describing a realistic multi-part piece of furniture.
+${PARTS_SCHEMA_PROMPT}`;
 
 async function callLlmModeliser(prompt, aiConfig, selectedItem) {
   const userMsg = selectedItem && /\b(this|selected|modify|edit|refine|wider|taller|change)\b/i.test(prompt)
@@ -216,20 +204,9 @@ async function callLlmModeliser(prompt, aiConfig, selectedItem) {
   let rawText = '';
 
   if (aiConfig.provider === 'gemini') {
-    const model = aiConfig.model || 'gemini-2.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(aiConfig.apiKey)}`;
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: LLM_SYSTEM_PROMPT }] },
-        contents: [{ role: 'user', parts: [{ text: userMsg }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.35 }
-      })
-    });
-    if (!resp.ok) throw new Error(`Gemini API HTTP ${resp.status}`);
-    const data = await resp.json();
-    rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const model = await resolveGeminiModel(aiConfig);
+    const { text } = await callGemini({ apiKey: aiConfig.apiKey, model, system: LLM_SYSTEM_PROMPT, user: userMsg, json: true, temperature: 0.35 });
+    rawText = text;
   } else if (aiConfig.provider === 'openai') {
     const url = (aiConfig.endpoint || 'https://api.openai.com/v1/chat/completions').trim();
     const resp = await fetch(url, {
@@ -248,13 +225,16 @@ async function callLlmModeliser(prompt, aiConfig, selectedItem) {
         ]
       })
     });
-    if (!resp.ok) throw new Error(`LLM API HTTP ${resp.status}`);
+    if (!resp.ok) {
+      let detail = '';
+      try { detail = (await resp.json())?.error?.message || ''; } catch (_) {}
+      throw new Error(`LLM API ${resp.status}${detail ? `: ${detail}` : ''}`);
+    }
     const data = await resp.json();
     rawText = data?.choices?.[0]?.message?.content || '';
   }
 
-  const cleaned = rawText.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-  const parsed = JSON.parse(cleaned);
+  const parsed = extractJson(rawText);
   if (!parsed || !Array.isArray(parsed.parts) || !parsed.parts.length) {
     throw new Error('LLM returned empty parts[]');
   }
@@ -264,12 +244,28 @@ async function callLlmModeliser(prompt, aiConfig, selectedItem) {
 /**
  * Main Phase 2 Async Prompt Interpreter!
  */
-export async function interpretPromptAsync(rawPrompt, { activeRoom = 'sejour', selectedItem = null, aiConfig = null } = {}) {
+export async function interpretPromptAsync(rawPrompt, { activeRoom = 'sejour', selectedItem = null, aiConfig = null, state = null } = {}) {
   const prompt = (rawPrompt || '').trim();
   const t = prompt.toLowerCase();
   if (!prompt) return { type: 'noop', message: 'Enter a prompt to modelise or edit a component.' };
 
-  const targetRoom = detectRoomFromPrompt(t, activeRoom);
+  const targetRoom = detectRoomFromPrompt(t.replace(/https?:\/\/\S+/g, ' '), activeRoom);
+  const cfg = aiConfig || loadAiConfig();
+  const hasKey = cfg.provider !== 'local' && cfg.apiKey && cfg.apiKey.trim().length > 8;
+
+  // 0. PRODUCT LINK IMPORT (Gemini reads the shop page → price, dimensions, 3D model, placement)
+  const url = findUrl(prompt);
+  if (url) {
+    if (cfg.provider !== 'gemini' || !hasKey) {
+      return { type: 'error', message: 'Product links need a Google Gemini API key — set it in ⚙️ Live LLM Engine (BYOK).' };
+    }
+    try {
+      return await importProductFromUrl(prompt, url, cfg, { state, fallbackRoom: targetRoom });
+    } catch (err) {
+      console.error('Product import failed:', err);
+      return { type: 'error', message: `Link import failed — ${err.message}` };
+    }
+  }
 
   // 1. Ambilly Sun & Time commands ("sunset", "winter sun 10am", "morning 9:00", "golden hour")
   if (/(sun|soleil|sunset|coucher|sunrise|lever|golden hour|winter|hiver|summer|[eé]t[eé]|noon|midi|\d{1,2}\s*(?:h|am|pm|:00|:30))/.test(t)
@@ -365,9 +361,8 @@ export async function interpretPromptAsync(rawPrompt, { activeRoom = 'sejour', s
     return { type: 'updateKitchenDoor', doorId: matchedDoor.id, message: `Swapped IKEA METOD Kitchen Fronts → ${matchedDoor.name}` };
   }
 
-  // 5. LIVE LLM BYOK MODE (Gemini 2.5 Flash / OpenAI) for arbitrary 3D modelisation!
-  const cfg = aiConfig || loadAiConfig();
-  if (cfg.provider !== 'local' && cfg.apiKey && cfg.apiKey.trim().length > 8) {
+  // 5. LIVE LLM BYOK MODE (Gemini / OpenAI-compatible) for arbitrary 3D modelisation!
+  if (hasKey) {
     try {
       const llmSpec = await callLlmModeliser(prompt, cfg, selectedItem);
       const w = Math.max(0.25, Math.min(3.5, Number(llmSpec.w) || 1.2));
@@ -401,7 +396,8 @@ export async function interpretPromptAsync(rawPrompt, { activeRoom = 'sejour', s
         message: `✨ LLM Modelised "${item.label}" (${llmSpec.parts.length} 3D parts) in ${targetRoom.toUpperCase()}`
       };
     } catch (err) {
-      console.warn('LLM API failed, falling back to Smart Local Modeliser:', err);
+      console.error('LLM API failed:', err);
+      return { type: 'error', message: `AI modeliser failed — ${err.message}` };
     }
   }
 
